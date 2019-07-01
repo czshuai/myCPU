@@ -38,6 +38,7 @@ reg ME_valid;
 wire [31:0] ME_FinalData; //寄存器写入值
 reg [4:0] ME_WriteReg; //写入寄存器号
 reg ME_RegWrite; //寄存器写使能
+wire [63:0] ME_MulRes; //mul计算结果
 
 wire WB_ready_go, WB_allowin;
 reg WB_valid;
@@ -48,6 +49,9 @@ wire [31:0] WB_readData;
 
 wire [1:0] ForwardA; //srcA 前递
 wire [1:0] ForwardB; //srcB
+
+//特殊寄存器
+reg [31:0] LO, HI; //保存除法的结果
 
 //IF
 reg [31:0] PC;
@@ -81,24 +85,27 @@ reg [31:0] ID_ins;
 wire [4:0] ID_rs;
 wire [4:0] ID_rt;
 wire [4:0] ID_rd;
-wire [31:0] ID_SignExt_imm;
-wire [31:0] ID_UnSignExt_imm;
+wire [31:0] ID_SignExt_imm150;
+wire [31:0] ID_UnSignExt_imm150;
+wire [31:0] ID_UnSignExt_imm106;
+wire ID_UnSignExt150; //ins[15:0]无符号扩展
+wire [31:0] ID_Ext_imm150;
 wire [63:0] ID_op_sel;
 wire [31:0] ID_rdata1;
 wire [31:0] ID_rdata2;
 wire [31:0] rdata1;
 wire [31:0] rdata2;
-wire [3:0] ID_ALUControl; //alu计算
+wire [4:0] ID_ALUControl; //alu计算
 wire [25:0] ID_InsIdx; //jal的instr_index
-wire ID_RegWrite; //控制信号 是否写回寄存�?
-wire ID_MemWrite; //是否写内�?
-wire ID_MemToReg; //是否将内存读结果写入寄存�?
-wire ID_RegDst; //目的寄存器�?�择
-wire ID_ALUSrc1; //选择alusource1的�??
-wire ID_ALUSrc2; //选择alusource2的�??
-wire ID_Branch; //是否为分支跳转指�?
+wire ID_RegWrite; //控制信号 是否写回reg
+wire ID_MemWrite; //是否写Mem
+wire ID_MemToReg; //是否将内存读结果写入reg
+wire ID_RegDst; //目的寄存器sel
+wire ID_ALUSrc1; //选择alusource1的val
+wire ID_ALUSrc2; //选择alusource2的val
+wire ID_Branch; //是否为分支跳转ins
 wire ID_BranchCond; //分支跳转条件
-wire ID_DirectBranch; //直接跳转 无条�?
+wire ID_DirectBranch; //直接跳转 无cond
 wire ID_Jal; //是否为jal跳转
 wire ID_Jr; //是否为jr跳转
 wire [31:0] ID_NoDirectPCBranch; //非直接跳转的PC地址
@@ -106,10 +113,16 @@ wire [31:0] ID_DirectPCBranch; //直接跳转的PC地址
 wire ID_Zero;
 wire ID_NoZero;
 wire ID_BranchEnable; //branch使能信号 跳转条件是否成立
+wire ID_Stall; //ID级阻塞信号
+wire ID_Div; //除法使能信号
+wire ID_DivSigned; //是否为有符号除法
+wire ID_Mul; //乘法使能信号
+wire ID_MulSigned; //是否为有符号乘法
+wire ID_SpecialRegWri; //是否写特殊寄存器
 //wire ID_PCSrc; //是否跳转 1 跳转
 //wire [31:0] ID_PCBranch; //跳转PC地址
 
-assign ID_ready_go = 1'b1;
+assign ID_ready_go = ~ID_Stall;
 assign ID_allowin = !ID_valid || ID_ready_go && EX_allowin;
 assign ID_to_EX_valid = ID_valid && ID_ready_go;
 
@@ -132,13 +145,18 @@ assign ID_rs = ID_ins[25:21];
 assign ID_rt = ID_ins[20:16];
 assign ID_rd = ID_ins[15:11];
 assign ID_InsIdx = ID_ins[25:0];
-regfile register_set(.clk(clk), .raddr1(ID_rs), .rdata1(rdata1), .raddr2(ID_rt), .rdata2(rdata2), .we(WB_RegWrite), .waddr(WB_WriteReg), .wdata(WB_FinalData));
-assign ID_SignExt_imm = {{16{ID_ins[15]}}, ID_ins[15:0]}; //有符号扩�?
-assign ID_UnSignExt_imm = {27'b0, ID_ins[10:6]}; //无符号扩�?
 
-//寄存器堆前�??
-assign ID_rdata1 = WB_valid ? (WB_RegWrite ? ((WB_WriteReg == ID_rs) ? WB_FinalData : rdata1) : rdata1) : rdata1;
-assign ID_rdata2 = WB_valid ? (WB_RegWrite ? ((WB_WriteReg == ID_rt) ? WB_FinalData : rdata2) : rdata2) : rdata2;
+regfile register_set(.clk(clk), .raddr1(ID_rs), .rdata1(rdata1), .raddr2(ID_rt), .rdata2(rdata2), .we(WB_RegWrite && WB_valid), .waddr(WB_WriteReg), .wdata(WB_FinalData));
+
+//符号扩展
+assign ID_SignExt_imm150 = {{16{ID_ins[15]}}, ID_ins[15:0]}; //150有符号扩展
+assign ID_UnSignExt_imm150 = {16'b0, ID_ins[15:0]}; //150无符号扩展
+assign ID_UnSignExt_imm106 = {27'b0, ID_ins[10:6]}; //106无符号扩展
+assign ID_Ext_imm150 = ID_UnSignExt150 ? ID_UnSignExt_imm150 : ID_SignExt_imm150;
+
+//寄存器堆前递
+assign ID_rdata1 = (WB_valid && WB_RegWrite && (WB_WriteReg == ID_rs)) ? WB_FinalData : rdata1;
+assign ID_radta2 = (WB_valid && WB_RegWrite && (WB_WriteReg == ID_rt)) ? WB_FinalData : rdata2;
 
 assign ID_op_sel[0] = (ID_ins[31:26] == 6'b100011); //op译码 lw
 assign ID_op_sel[1] = (ID_ins[31:26] == 6'b101011); //sw
@@ -159,37 +177,61 @@ assign ID_op_sel[15] = (ID_ins[31:26] == 6'b000100); //beq
 assign ID_op_sel[16] = (ID_ins[31:26] == 6'b000101); //bne
 assign ID_op_sel[17] = (ID_ins[31:26] == 6'b000011); //jal
 assign ID_op_sel[18] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b001000); //jr
+assign ID_op_sel[19] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b100000); //add
+assign ID_op_sel[20] = (ID_ins[31:26] == 6'b001000); //addi
+assign ID_op_sel[21] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b100010); //sub
+assign ID_op_sel[22] = (ID_ins[31:26] == 6'b001010); //slti
+assign ID_op_sel[23] = (ID_ins[31:26] == 6'b001011); //sltiu
+assign ID_op_sel[24] = (ID_ins[31:26] == 6'b001100); //andi
+assign ID_op_sel[25] = (ID_ins[31:26] == 6'b001101); //ori
+assign ID_op_sel[26] = (ID_ins[31:26] == 6'b001110); //xori
+assign ID_op_sel[27] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b000100); //sllv
+assign ID_op_sel[28] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b000111); //srav
+assign ID_op_sel[29] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b000110); //srlv
+assign ID_op_sel[30] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b011010); //div
+assign ID_op_sel[31] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b011011); //divu
+assign ID_op_sel[32] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b011000); //mult
+assign ID_op_sel[33] = (ID_ins[31:26] == 6'b0) && (ID_ins[5:0] == 6'b011001); //multu
 
-assign ID_ALUControl = ({4{ID_op_sel[0] || ID_op_sel[1] || ID_op_sel[3] || ID_op_sel[4]}} && 4'b0) //000 加法 // 可合�?
-                       | ({4{ID_op_sel[2]}} & 4'b1) //001 lui 高位加载
-                       | ({4{ID_op_sel[5]}} & 4'b10) //010 减法
-                       | ({4{ID_op_sel[6]}} & 4'b11) //011 有符号比�?
-                       | ({4{ID_op_sel[7]}} & 4'b100) //100 无符号比�?
-                       | ({4{ID_op_sel[8]}} & 4'b101) //101 逻辑�?
-                       | ({4{ID_op_sel[9]}} & 4'b110) //110 逻辑�?
-                       | ({4{ID_op_sel[10]}} & 4'b111) //111 逻辑异或
-                       | ({4{ID_op_sel[11]}} & 4'b1000) //1000 逻辑或非
-                       | ({4{ID_op_sel[12]}} & 4'b1001) //1001 逻辑左移
-                       | ({4{ID_op_sel[13]}} & 4'b1010) //1010 逻辑右移
-                       | ({4{ID_op_sel[14]}} & 4'b1011); //1011 算术右移
+//有符号加减单独列出为了处理例外
+assign ID_ALUControl = ({5{ID_op_sel[0] || ID_op_sel[1] || ID_op_sel[3] || ID_op_sel[4]}} && 5'b0) //000 加法
+                       | ({5{ID_op_sel[2]}} & 5'b1) //001 lui 高位加载
+                       | ({5{ID_op_sel[5]}} & 5'b10) //010 减法
+                       | ({5{ID_op_sel[6] || ID_op_sel[22]}} & 5'b11) //011 有符号比较
+                       | ({5{ID_op_sel[7] || ID_op_sel[23]}} & 5'b100) //100 无符号比较
+                       | ({5{ID_op_sel[8] || ID_op_sel[24]}} & 5'b101) //101 逻辑and
+                       | ({5{ID_op_sel[9] || ID_op_sel[25]}} & 5'b110) //110 逻辑or
+                       | ({5{ID_op_sel[10] || ID_op_sel[26]}} & 5'b111) //111 逻辑异或
+                       | ({5{ID_op_sel[11]}} & 5'b1000) //1000 逻辑或非
+                       | ({5{ID_op_sel[12] || ID_op_sel[27]}} & 5'b1001) //1001 逻辑左移
+                       | ({5{ID_op_sel[13] || ID_op_sel[29]}} & 5'b1010) //1010 逻辑右移
+                       | ({5{ID_op_sel[14] || ID_op_sel[28]}} & 5'b1011) //1011 算术右移
+                       | ({5{ID_op_sel[19] || ID_op_sel[20]}} & 5'b1100) //1100 有符号加
+                       | ({5{ID_op_sel[21]}} & 5'b1101); //1101 有符号减
 
 //控制信号设置
-assign ID_RegWrite = ~(ID_op_sel[1] || ID_op_sel[15] || ID_op_sel[16] || ID_op_sel[18]); //设置控制信号 是否写回寄存�?
-assign ID_MemWrite = ID_op_sel[1]; //是否写内�?
+assign ID_RegWrite = ~(ID_op_sel[1] || ID_op_sel[15] || ID_op_sel[16] || ID_op_sel[18] || ID_op_sel[30] || ID_op_sel[31]); //设置控制信号 是否写回寄存器
+assign ID_MemWrite = ID_op_sel[1]; //是否写内存
 assign ID_MemToReg = ID_op_sel[0]; // 1 选择 readData; 0 选择 aluResult
 //assign ID_RegDst = ID_op_sel[3] || ID_op_sel[5] || ID_op_sel[6] || ID_op_sel[7] || ID_op_sel[8]; // 1 选择 rd; 0 选择 rt
-//assign ID_ALUSrc2 = ID_op_sel[3] || ID_op_sel[5] || ID_op_sel[6] || ID_op_sel[7] || ID_op_sel[8]; // 1 选择 rdata2; 0 选择 SignExt_imm //可简�?
+//assign ID_ALUSrc2 = ID_op_sel[3] || ID_op_sel[5] || ID_op_sel[6] || ID_op_sel[7] || ID_op_sel[8]; // 1 选择 rdata2; 0 选择 SignExt_imm150
 assign ID_RegDst = (ID_ins[31:26] == 6'b0);
 assign ID_ALUSrc2 = (ID_ins[31:26] == 6'b0);
-assign ID_ALUSrc1 = ~(ID_op_sel[12] || ID_op_sel[13] || ID_op_sel[14]); // 1 选择 rdata1; 0 选择 UnSignExt_imm
+assign ID_ALUSrc1 = ~(ID_op_sel[12] || ID_op_sel[13] || ID_op_sel[14]); // 1 选择 rdata1; 0 选择 UnSignExt_imm106
 assign ID_Branch = ID_op_sel[15] || ID_op_sel[16] || ID_op_sel[17] || ID_op_sel[18];
-assign ID_BranchCond = ID_op_sel[16]; //1 选择 NoZero信号; 0 选择 Zero信号 �?要扩�?
-assign ID_Jal = ID_op_sel[17]; //1 采用jal跳转信号的特殊处�?
+assign ID_BranchCond = ID_op_sel[16]; //1 选择 NoZero信号; 0 选择 Zero信号 需要扩展
+assign ID_Jal = ID_op_sel[17]; //1 采用jal跳转信号的特殊处理
 assign ID_DirectBranch = ID_op_sel[17] || ID_op_sel[18]; //1 选择 DirectPCBranch; 0 选择 NoDirectPCBranch; 特殊信号 为jal设置
 assign ID_Jr = ID_op_sel[18];
+assign ID_UnSignExt150 = ID_op_sel[24] || ID_op_sel[25] || ID_op_sel[26]; //1 选择 UnSignExt_imm150
+assign ID_Div = ID_op_sel[30] || ID_op_sel[31];
+assign ID_DivSigned = ID_op_sel[30];
+assign ID_Mul = ID_op_sel[32] || ID_op_sel[33];
+assign ID_MulSigned = ID_op_sel[32];
+assign ID_SpecialRegWri = ID_op_sel[30] || ID_op_sel[31] || ID_op_sel[32] || ID_op_sel[33];
 
 //分支处理
-assign ID_NoDirectPCBranch = (ID_SignExt_imm << 2) + ID_NextPC;
+assign ID_NoDirectPCBranch = (ID_SignExt_imm150 << 2) + ID_NextPC;
 assign ID_DirectPCBranch = {ID_NextPC[31:28], ID_InsIdx, 2'b0};
 assign ID_PCBranch = ID_Jr ? ID_rdata1 : (ID_Jal ? ID_DirectPCBranch : ID_NoDirectPCBranch); //选择jal、jr的特殊处理方法
 assign ID_Zero = (ID_rdata1 == ID_rdata2);//分支条件
@@ -205,7 +247,7 @@ reg [31:0] EX_PC;
 reg [4:0] EX_rs;
 reg [4:0] EX_rt;
 reg [4:0] EX_rd;
-reg [3:0] EX_ALUControl;
+reg [4:0] EX_ALUControl;
 reg [25:0] EX_InsIdx;
 reg EX_MemWrite;
 reg EX_MemToReg;
@@ -213,11 +255,16 @@ reg EX_RegDst;
 reg EX_ALUSrc1;
 reg EX_ALUSrc2;
 reg EX_Jal;
-reg [31:0] EX_SignExt_imm;
-reg [31:0] EX_UnSignExt_imm;
+reg [31:0] EX_Ext_imm150;
+reg [31:0] EX_UnSignExt_imm106;
 reg [31:0] EX_rdata1;
 reg [31:0] EX_rdata2;
 reg EX_OldRegWrite;
+reg EX_Div;
+reg EX_DivSigned; 
+reg EX_Mul;
+reg EX_MulSigned;
+reg EX_SpecialRegWri;
 wire EX_RegWrite;
 wire [31:0] EX_TrueRdata1;
 wire [31:0] EX_TrueRdata2;
@@ -226,8 +273,13 @@ wire [31:0] EX_WriteData;
 wire [31:0] EX_aluResult;
 wire [31:0] EX_srcA;
 wire [31:0] EX_srcB;
+wire EX_Overflow;
+wire EX_DivComplete;
+wire EX_Stall; //EX级阻塞信号
+wire [31:0] EX_LOVal; //保存LO寄存器的值
+wire [31:0] EX_HIVal; //保存HI寄存器的值
 
-assign EX_ready_go = 1'b1;
+assign EX_ready_go = ~EX_Stall;
 assign EX_allowin = !EX_valid || EX_ready_go && ME_allowin;
 assign EX_to_ME_valid = EX_valid && EX_ready_go;
 
@@ -254,10 +306,15 @@ always @(posedge clk) begin
         EX_ALUSrc1 <= ID_ALUSrc1;
         EX_ALUSrc2 <= ID_ALUSrc2;
         EX_Jal <= ID_Jal;
-        EX_SignExt_imm <= ID_SignExt_imm;
-        EX_UnSignExt_imm <= ID_UnSignExt_imm;
+        EX_Ext_imm150 <= ID_Ext_imm150;
+        EX_UnSignExt_imm106 <= ID_UnSignExt_imm106;
         EX_rdata1 <= ID_rdata1;
         EX_rdata2 <= ID_rdata2;
+        EX_Div <= ID_Div;
+        EX_DivSigned <= ID_DivSigned;
+        EX_Mul <= ID_Mul;
+        EX_MulSigned <= ID_MulSigned;
+        EX_SpecialRegWri <= ID_SpecialRegWri;
     end
 end
 
@@ -265,13 +322,21 @@ end
 assign EX_TrueRdata1 = ForwardA[0] ? WB_FinalData : (ForwardA[1] ? ME_FinalData : EX_rdata1); //写回级的寄存器前递优先级高
 assign EX_TrueRdata2 = ForwardB[0] ? WB_FinalData : (ForwardB[1] ? ME_FinalData : EX_rdata2);        
 
-assign EX_srcA = EX_ALUSrc1 ? EX_TrueRdata1 : EX_UnSignExt_imm;
-assign EX_srcB = EX_ALUSrc2 ? EX_TrueRdata2 : EX_SignExt_imm;
+//数据选择
+assign EX_srcA = EX_ALUSrc1 ? EX_TrueRdata1 : EX_UnSignExt_imm106;
+assign EX_srcB = EX_ALUSrc2 ? EX_TrueRdata2 : EX_Ext_imm150;
 assign EX_WriteData = EX_TrueRdata2;
 assign EX_WriteReg = EX_Jal ? 5'd31 : (EX_RegDst ? EX_rd : EX_rt); //jal需要写31号寄存器
-assign EX_RegWrite = (EX_WriteReg == 5'b0) ? 1'b0 : EX_OldRegWrite; //写寄存器0时 直接取消寄存器写使能 避免后续产生寄存器前递
+assign EX_RegWrite = (EX_WriteReg == 5'b0 || EX_Overflow == 1'b1) ? 1'b0 : EX_OldRegWrite; //写寄存器0时 直接取消寄存器写使能 避免后续产生寄存器前递
 
-alu calculation(.ALUControl(EX_ALUControl), .alu_src1(EX_srcA), .alu_src2(EX_srcB), .alu_result(EX_aluResult));
+//出现例外直接取消写信号
+alu calculation(.ALUControl(EX_ALUControl), .alu_src1(EX_srcA), .alu_src2(EX_srcB), .alu_result(EX_aluResult), .Overflow(EX_Overflow);
+div divider(.div_clk(clk), .resetn(resetn), .div(EX_Div), .div_signed(EX_DivSigned), .x(EX_TrueRdata1), .y(EX_TrueRdata2), .s(EX_LOVal), .r(EX_HIVal), .complete(EX_DivComplete));
+mul muler(.mul_clk(clk), .resetn(resetn), .mul_signed(EX_MulSigned), .x(EX_TrueRdata1), .y(EX_TrueRdata2), .result(ME_MulRes));
+//mult流水 跨执行阶段和访存阶段 模块内进行流水 在访存阶段得到结果
+
+//div产生阻塞信号
+assign EX_Stall = EX_Div && ~EX_DivComplete && EX_valid;
 
 //ME
 reg [31:0] ME_NextPC;
@@ -281,7 +346,13 @@ reg ME_Jal;
 reg [31:0] ME_aluResult;
 reg ME_MemWrite;
 reg [31:0] ME_WriteData;
-
+reg [31:0] ME_OldLOVal;
+reg [31:0] ME_OldHIVal;
+reg ME_SpecialRegWri;
+reg ME_Mul;
+wire [31:0] ME_LOVal;
+wire [31:0] ME_HIVal;
+//wire [63:0] ME_MulRes; //mul计算结果
 //wire [31:0] ME_FinalData; //寄存器写入值
 //reg [4:0] ME_WriteReg; //写入寄存器号
 //reg ME_RegWrite; //寄存器写使能
@@ -313,10 +384,18 @@ always @(posedge clk) begin
         ME_Jal <= EX_Jal;
         ME_MemWrite <= EX_MemWrite;
         ME_WriteData <= EX_WriteData;
+        ME_OldLOVal <= EX_LOVal;
+        ME_OldHIVal <= EX_HIVal;
+        ME_SpecialRegWri <= EX_SpecialRegWri;
+        ME_Mul <= EX_Mul;
     end
 end
 
 assign ME_FinalData = ME_Jal ? (ME_NextPC + 32'd4) : ME_aluResult; //jal特殊处理
+
+//乘法数据处理
+assign ME_LOVal = ME_Mul ? ME_MulRes[31:0] : ME_OldLOVal;
+assign ME_HIVal = ME_Mul ? ME_MulRes[63:32] : ME_OldHIVal;
 
 //WB
 reg [31:0] WB_NextPC;
@@ -325,6 +404,9 @@ reg WB_MemToReg;
 reg WB_Jal;
 reg [31:0] WB_aluResult;
 reg [31:0] WB_OldFinalData;
+reg [31:0] WB_LOVal;
+reg [31:0] WB_HIVal;
+reg WB_SpecialRegWri;
 //reg WB_RegWrite;
 //reg [4:0] WB_WriteReg;
 //wire [31:0] WB_FinalData;
@@ -351,11 +433,22 @@ always @(posedge clk) begin
         WB_aluResult <= ME_aluResult;
         WB_Jal <= ME_Jal;
         WB_OldFinalData <= ME_FinalData;
+        WB_LOVal <= ME_LOVal;
+        WB_HIVal <= ME_HIVal;
+        WB_SpecialRegWri <= ME_SpecialRegWri;
     end
 end
 
 //assign WB_FinalData = WB_Jal ? (WB_NextPC + 32'd4) : (WB_MemToReg ? WB_readData : WB_aluResult);
 assign WB_FinalData = WB_MemToReg ? WB_readData : WB_OldFinalData;
+
+//LO/HI特殊寄存器写
+always @(posedge clk) begin
+    if (WB_SpecialRegWri && WB_valid) begin
+        LO <= WB_LOVal;
+        HI <= WB_HIVal;
+    end
+end
 
 assign debug_wb_pc = WB_PC;
 assign debug_wb_rf_wen = {4{WB_RegWrite}};
@@ -365,6 +458,9 @@ assign debug_wb_rf_wdata = WB_FinalData;
 //冲突检测单元
 //wire [1:0] ForwardA;
 //wire [1:0] ForwardB;
+//wire ID_Stall; //ID级阻塞信号
+
+assign ID_Stall = ((ID_rs == EX_WriteReg) || (ID_rt == EX_WriteReg)) && EX_MemToReg && EX_RegWrite && EX_valid;
 
 assign ForwardA[0] = (EX_rs == WB_WriteReg) && WB_valid && WB_RegWrite; 
 assign ForwardA[1] = (EX_rs == ME_WriteReg) && ME_valid && ME_RegWrite;

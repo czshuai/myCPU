@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//x/y   //执行需要34个周期
+//x/y   //执行�?�?34个周�?
 module div(
     input div_clk, resetn,
     input div,
@@ -17,17 +17,17 @@ wire [32:0] tmp_d;
 wire [32:0] result_r;
 wire [32:0] UnsignX, UnsignY;
 
-assign UnsignX = {1'b0, (div_signed ? (x[31] ? (~x + 1) : x) : x)}; //取绝对�?�并扩展�?33�?
+assign UnsignX = {1'b0, (div_signed ? (x[31] ? (~x + 1) : x) : x)}; //取绝对�?�并扩展�??33�??
 assign UnsignY = {1'b0, (div_signed ? (y[31] ? (~y + 1) : y) : y)};
 
-always @(posedge div_clk) begin  //33位除法计�?
+always @(posedge div_clk) begin  //33位除法计�??
     if (~resetn || ~div) begin
-        count <= 8'd32;     //计算33�?
+        count <= 8'd32;     //计算33�??
         complete <= 1'b0;
         tmp_r <= 33'b0;
     end
     else if (~(count[7])) begin
-        if (tmp_d[32]) begin    //tmp_d为负�?
+        if (tmp_d[32]) begin    //tmp_d为负�??
             UnsignS <= {UnsignS[31:0], 1'b0};
             tmp_r <= result_r;
         end 

@@ -22,6 +22,7 @@ wire op_sra; //算术右移
 wire op_lui; //高位加载
 wire op_SignAdd; //有符号加
 wire op_SignSub; //有符号减
+wire op_ExcepAdd; //产生地址不对齐例外的加法
 
 assign op_add = (ALUControl == 5'b0);
 assign op_lui = (ALUControl == 5'b1);
@@ -37,6 +38,7 @@ assign op_srl = (ALUControl == 5'b1010);
 assign op_sra = (ALUControl == 5'b1011);
 assign op_SignAdd = (ALUControl == 5'b1100);
 assign op_SignSub = (ALUControl == 5'b1101);
+assign op_ExcepAdd = (ALUControl == 5'b1110); 
 
 /*
 assign op_sub = alu_control[10]; 
@@ -95,7 +97,7 @@ assign sll_result = alu_src2 << alu_src1[4:0];
 assign sr64_result = {{32{op_sra&alu_src2[31]}}, alu_src2[31:0]}>>alu_src1[4:0]; 
 assign sr_result = sr64_result[31:0];
 
-assign alu_result = ({32{op_add | op_sub | op_SignAdd | op_SignSub }} & add_sub_result) 
+assign alu_result = ({32{op_add | op_sub | op_SignAdd | op_SignSub | op_ExcepAdd}} & add_sub_result) 
                     | ({32{op_slt }} & slt_result) 
                     | ({32{op_sltu }} & sltu_result) 
                     | ({32{op_and }} & and_result) 

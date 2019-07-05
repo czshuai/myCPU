@@ -56,7 +56,7 @@ wire ID_Mul; //乘法使能信号
 wire ID_MulSigned; //是否为有符号乘法
 wire ID_SpecialRegWri; //是否写特殊寄存器
 wire ID_SpecialRegRead; //是否读特殊寄存器
-wire [1:0] ID_SpecialRegSel; //选择HI或�?�LO寄存�???? 01选择lo 10选择hi
+wire [1:0] ID_SpecialRegSel; //选择HI或�?�LO寄存�????? 01选择lo 10选择hi
 wire [31:0] ID_ReadHiReg; //读取的特殊寄存器的�??
 wire [31:0] ID_ReadLoReg;
 wire [2:0] ID_MemDataWidth; //内存数据宽度
@@ -80,8 +80,8 @@ wire [31:0] EX_ReadHiReg;
 wire [31:0] EX_ReadLoReg;
 wire [31:0] EX_WriteData;
 wire [31:0] EX_aluResult;
-wire [31:0] EX_LOVal; //保存LO寄存器的�????
-wire [31:0] EX_HIVal; //保存HI寄存器的�????
+wire [31:0] EX_LOVal; //保存LO寄存器的�?????
+wire [31:0] EX_HIVal; //保存HI寄存器的�?????
 wire [2:0] EX_MemDataWidth;
 wire [1:0] EX_MemDataCombine;
 wire [31:0] EX_rdata2;
@@ -321,14 +321,14 @@ assign ME_ready_go = 1'b1;
 assign ME_allowin = !ME_valid || ME_ready_go && WB_allowin;
 assign ME_to_WB_valid = ME_valid && ME_ready_go;
 
-assign data_sram_en = ME_valid; //同步RAM 上一拍输入， 下一拍得到结�????
+assign data_sram_en = EX_valid; //同步RAM 上一拍输入， 下一拍得到结�?????
 assign ME_readData = data_sram_rdata;
 
 always @(posedge clk) begin
     if (~resetn) begin
         ME_valid <= 1'b0;
     end
-    else if (EX_allowin) begin
+    else if (ME_allowin) begin
         ME_valid <= EX_to_ME_valid;
     end
 
@@ -416,10 +416,18 @@ always @(posedge clk) begin
 end
 
 //assign WB_FinalData = ME_WriPCPlus8 ? (WB_NextPC + 32'd4) : (WB_MemToReg ? WB_readData : WB_aluResult);
-assign WB_TrueReadData = ({32{(WB_MemDataWidth == 3'b001)}} & {{24{WB_readData[7]}}, WB_readData[7:0]}) | 
-                         ({32{(WB_MemDataWidth == 3'b010)}} & {24'b0, WB_readData[7:0]}) |
-                         ({32{(WB_MemDataWidth == 3'b011)}} & {{16{WB_readData[15]}}, WB_readData[15:0]}) |
-                         ({32{(WB_MemDataWidth == 3'b100)}} & {16'b0, WB_readData[15:0]}) |
+assign WB_TrueReadData = ({32{(WB_MemDataWidth == 3'b001 && WB_aluResult[1:0] == 2'b0)}} & {{24{WB_readData[7]}}, WB_readData[7:0]}) | 
+                         ({32{(WB_MemDataWidth == 3'b001 && WB_aluResult[1:0] == 2'b1)}} & {{24{WB_readData[15]}}, WB_readData[15:8]}) | 
+                         ({32{(WB_MemDataWidth == 3'b001 && WB_aluResult[1:0] == 2'b10)}} & {{24{WB_readData[23]}}, WB_readData[23:16]}) |
+                         ({32{(WB_MemDataWidth == 3'b001 && WB_aluResult[1:0] == 2'b11)}} & {{24{WB_readData[31]}}, WB_readData[31:24]}) |
+                         ({32{(WB_MemDataWidth == 3'b010 && WB_aluResult[1:0] == 2'b0)}} & {24'b0, WB_readData[7:0]}) | 
+                         ({32{(WB_MemDataWidth == 3'b010 && WB_aluResult[1:0] == 2'b1)}} & {24'b0, WB_readData[15:8]}) | 
+                         ({32{(WB_MemDataWidth == 3'b010 && WB_aluResult[1:0] == 2'b10)}} & {24'b0, WB_readData[23:16]}) |
+                         ({32{(WB_MemDataWidth == 3'b010 && WB_aluResult[1:0] == 2'b11)}} & {24'b0, WB_readData[31:24]}) |                     
+                         ({32{(WB_MemDataWidth == 3'b011 && WB_aluResult[1:0] == 2'b0)}} & {{16{WB_readData[15]}}, WB_readData[15:0]}) |
+                         ({32{(WB_MemDataWidth == 3'b011 && WB_aluResult[1:0] == 2'b10)}} & {{16{WB_readData[31]}}, WB_readData[31:16]}) |
+                         ({32{(WB_MemDataWidth == 3'b100 && WB_aluResult[1:0] == 2'b0)}} & {16'b0, WB_readData[15:0]}) |
+                         ({32{(WB_MemDataWidth == 3'b100 && WB_aluResult[1:0] == 2'b10)}} & {16'b0, WB_readData[31:16]}) |
                          ({32{(WB_MemDataWidth == 3'b101)}} & WB_readData);
 
 wire [7:0] MemData [3:0];
@@ -437,20 +445,20 @@ assign MemData[1] = WB_TrueReadData[15:8];
 assign MemData[2] = WB_TrueReadData[23:16];
 assign MemData[3] = WB_TrueReadData[31:24];
 
-assign LWLRes = {32{(WB_aluResult[1:0] == 2'b0)}} & {MemData[0], regData[2:0]} |
-                {32{(WB_aluResult[1:0] == 2'b1)}} & {MemData[1:0], regData[1:0]} |
-                {32{(WB_aluResult[1:0] == 2'b10)}} & {MemData[2:0], regData[0]} |
-                {32{(WB_aluResult[1:0] == 2'b11)}} & MemData[3:0];
+assign LWLRes = {32{(WB_aluResult[1:0] == 2'b0)}} & {MemData[0], regData[2], regData[1], regData[0]} |
+                {32{(WB_aluResult[1:0] == 2'b1)}} & {MemData[1], MemData[0], regData[1], regData[0]} |
+                {32{(WB_aluResult[1:0] == 2'b10)}} & {MemData[2], MemData[1], MemData[0], regData[0]} |
+                {32{(WB_aluResult[1:0] == 2'b11)}} & {MemData[3], MemData[2], MemData[1], MemData[0]};
 
-assign LWRRes = {32{(WB_aluResult[1:0] == 2'b0)}} & MemData[3:0] |
-                {32{(WB_aluResult[1:0] == 2'b1)}} & {regData[3], MemData[3:1]} |
-                {32{(WB_aluResult[1:0] == 2'b10)}} & {regData[3:2], MemData[3:2]} |
-                {32{(WB_aluResult[1:0] == 2'b11)}} & {regData[3:1], MemData[3]};
+assign LWRRes = {32{(WB_aluResult[1:0] == 2'b0)}} & {MemData[3], MemData[2], MemData[1], MemData[0]} |
+                {32{(WB_aluResult[1:0] == 2'b1)}} & {regData[3], MemData[3], MemData[2], MemData[1]} |
+                {32{(WB_aluResult[1:0] == 2'b10)}} & {regData[3], regData[2], MemData[3], MemData[2]} |
+                {32{(WB_aluResult[1:0] == 2'b11)}} & {regData[3], regData[2], regData[1], MemData[3]};
             
 
-assign WB_TrueTrueReadData = {32{(ME_MemDataCombine == 3'b01)}} & LWLRes | 
-                             {32{(ME_MemDataCombine == 3'b10)}} & LWRRes |
-                             {32{(ME_MemDataCombine == 3'b0)}} & WB_TrueReadData;
+assign WB_TrueTrueReadData = {32{(WB_MemDataCombine == 2'b01)}} & LWLRes | 
+                             {32{(WB_MemDataCombine == 2'b10)}} & LWRRes |
+                             {32{(WB_MemDataCombine == 2'b0)}} & WB_TrueReadData;
 
 assign WB_FinalData = WB_MemToReg ? WB_TrueTrueReadData : WB_OldFinalData;
 
@@ -459,7 +467,7 @@ assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid}};
 assign debug_wb_rf_wnum = WB_WriteReg;
 assign debug_wb_rf_wdata = WB_FinalData;
 
-//冲突�????测单�????
+//冲突�?????测单�?????
 //wire [2:0] ForwardA;
 //wire [2:0] ForwardB;
 

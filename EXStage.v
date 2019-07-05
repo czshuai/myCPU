@@ -50,7 +50,7 @@ module EXStage (
     output [31:0] EX_WriteData,
     output reg [2:0] EX_MemDataWidth,
     output reg [1:0] EX_MemDataCombine,
-    output reg [31:0] EX_rdata2;
+    output reg [31:0] EX_rdata2,
 
     output [31:0] EX_LOVal, EX_HIVal,
     output reg EX_SpecialRegWri,
@@ -90,6 +90,7 @@ wire EX_DivComplete;
 wire [31:0] EX_DivResS;
 wire [31:0] EX_DivResR;
 wire [31:0] EX_TrueWriteData;
+wire [31:0] EX_TrueTrueWriteData;
 wire [3:0] data_wen_sel; //选择写的字节
 
 assign EX_ready_go = ~EX_Stall;
@@ -144,31 +145,35 @@ assign EX_HIVal = (EX_SpecialRegWri && ~EX_Div && EX_SpecialRegSel[1]) ? EX_rdat
 assign EX_srcA = EX_ALUSrc1 ? EX_rdata1 : EX_UnSignExt_imm106;
 assign EX_srcB = EX_ALUSrc2 ? EX_rdata2 : EX_Ext_imm150;
 assign EX_WriteData = EX_rdata2;
-assign EX_WriteReg = EX_WriReg31 ? 5'd31 : (EX_RegDst ? EX_rd : EX_rt); //jal�????要写31号寄存器
-assign EX_RegWrite = (EX_WriteReg == 5'b0) ? 1'b0 : EX_OldRegWrite; //写寄存器0�???? 直接取消寄存器写使能 避免后续产生寄存器前�????
+assign EX_WriteReg = EX_WriReg31 ? 5'd31 : (EX_RegDst ? EX_rd : EX_rt); //jal�?????要写31号寄存器
+assign EX_RegWrite = (EX_WriteReg == 5'b0) ? 1'b0 : EX_OldRegWrite; //写寄存器0�????? 直接取消寄存器写使能 避免后续产生寄存器前�?????
 
-//出现例外直接取消写信�????
+//出现例外直接取消写信�?????
 alu calculation(.ALUControl(EX_ALUControl), .alu_src1(EX_srcA), .alu_src2(EX_srcB), .alu_result(EX_aluResult), .Overflow(EX_Overflow));
 div divider(.div_clk(clk), .resetn(resetn), .div(EX_Div), .div_signed(EX_DivSigned), .x(EX_rdata1), .y(EX_rdata2), .s(EX_DivResS), .r(EX_DivResR), .complete(EX_DivComplete));
-mul muler(.mul_clk(clk), .resetn(resetn), .mul_signed(EX_MulSigned), .x(EX_rdata1), .y(EX_
+mul muler(.mul_clk(clk), .resetn(resetn), .mul_signed(EX_MulSigned), .x(EX_rdata1), .y(EX_rdata2), .result(ME_MulRes));
 
 //div产生阻塞信号
-assign EX_Stall = EX_Div && ~EX_DivComplete;rdata2), .result(ME_MulRes));
-//mult流水 跨执行阶段和访存阶段 模块内进行流�???? 在访存阶段得到结�????
+assign EX_Stall = EX_Div && ~EX_DivComplete;
+//mult流水 跨执行阶段和访存阶段 模块内进行流�????? 在访存阶段得到结�?????
 
-assign data_wen_sel = ({4{(EX_MemDataWidth == 3'b001)}} & {3'b0, EX_MemWrite}) |
-                      ({4{(EX_MemDataWidth == 3'b011)}} & {2'b0, {2{EX_MemWrite}}}) |
+assign data_wen_sel = ({4{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b0)}} & {3'b0, EX_MemWrite}) |
+                      ({4{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b1)}} & {2'b0, EX_MemWrite, 1'b0}) |
+                      ({4{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b10)}} & {1'b0, EX_MemWrite, 2'b0}) |
+                      ({4{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b11)}} & {EX_MemWrite, 3'b0}) |
+                      ({4{(EX_MemDataWidth == 3'b011 && EX_aluResult[1:0] == 2'b0)}} & {2'b0, {2{EX_MemWrite}}}) |
+                      ({4{(EX_MemDataWidth == 3'b011 && EX_aluResult[1:0] == 2'b10)}} & {{2{EX_MemWrite}}, 2'b0}) |
                       ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b0)}} & {4{EX_MemWrite}}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult == 2'b0)}} & {3'b0, EX_MemWrite}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult == 2'b1)}} & {2'b0, {2{EX_MemWrite}}}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult == 2'b10)}} & {1'b0, {3{EX_MemWrite}}}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult == 2'b11)}} & {4{EX_MemWrite}}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult == 2'b0)}} & {4{EX_MemWrite}}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult == 2'b1)}} & {{3{EX_MemWrite}}, 1'b0}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult == 2'b10)}} & {{2{EX_MemWrite}}, 2'b0}) |
-                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult == 2'b11)}} & {{1{EX_MemWrite}}, 3'b0});
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult[1:0] == 2'b0)}} & {3'b0, EX_MemWrite}) |
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult[1:0] == 2'b1)}} & {2'b0, {2{EX_MemWrite}}}) |
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult[1:0] == 2'b10)}} & {1'b0, {3{EX_MemWrite}}}) |
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b01) && (EX_aluResult[1:0] == 2'b11)}} & {4{EX_MemWrite}}) |
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult[1:0] == 2'b0)}} & {4{EX_MemWrite}}) |
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult[1:0] == 2'b1)}} & {{3{EX_MemWrite}}, 1'b0}) |
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult[1:0] == 2'b10)}} & {{2{EX_MemWrite}}, 2'b0}) |
+                      ({4{(EX_MemDataWidth == 3'b101) && (EX_MemDataCombine == 2'b10) && (EX_aluResult[1:0] == 2'b11)}} & {{1{EX_MemWrite}}, 3'b0});
+                      
 
-wire [7:0] MemData [3:0];
 wire [7:0] regData [3:0];
 wire [31:0] SWLRes;
 wire [31:0] SWRRes;
@@ -178,22 +183,30 @@ assign regData[1] = EX_rdata2[15:8];
 assign regData[2] = EX_rdata2[23:16];
 assign regData[3] = EX_rdata2[31:24];
 
-assign SWLRes = {32{(EX_aluResult[1:0] == 2'b0)}} & {24'b0 , regData[3]} |
-                {32{(EX_aluResult[1:0] == 2'b1)}} & {16'b0, regData[3:2]} |
-                {32{(EX_aluResult[1:0] == 2'b10)}} & {8'b0, regData[3:1]} |
-                {32{(EX_aluResult[1:0] == 2'b11)}} & regData[3:0];
+assign EX_TrueWriteData = ({32{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b0)}} & {24'b0, regData[0]}) | 
+                          ({32{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b1)}} & {16'b0, regData[0], 8'b0}) | 
+                          ({32{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b10)}} & {8'b0, regData[0], 16'b0}) |
+                          ({32{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b11)}} & {regData[0], 24'b0}) |
+                          ({32{(EX_MemDataWidth == 3'b011 && EX_aluResult[1:0] == 2'b0)}} & {16'b0, regData[1], regData[0]}) |
+                          ({32{(EX_MemDataWidth == 3'b011 && EX_aluResult[1:0] == 2'b10)}} & {regData[1], regData[0], 16'b0}) |
+                          ({32{(EX_MemDataWidth == 3'b101)}} & EX_WriteData);
 
-assign SWRRes = {32{(EX_aluResult[1:0] == 2'b0)}} & regData[3:0] |
-                {32{(EX_aluResult[1:0] == 2'b1)}} & {regData[2:0], 8'b0} |
-                {32{(EX_aluResult[1:0] == 2'b10)}} & {regData[1:0], 16'b0} |
+assign SWLRes = {32{(EX_aluResult[1:0] == 2'b0)}} & {24'b0 , regData[3]} |
+                {32{(EX_aluResult[1:0] == 2'b1)}} & {16'b0, regData[3], regData[2]} |
+                {32{(EX_aluResult[1:0] == 2'b10)}} & {8'b0, regData[3], regData[2], regData[1]} |
+                {32{(EX_aluResult[1:0] == 2'b11)}} & {regData[3], regData[2], regData[1], regData[0]};
+
+assign SWRRes = {32{(EX_aluResult[1:0] == 2'b0)}} &  {regData[3], regData[2], regData[1], regData[0]} |
+                {32{(EX_aluResult[1:0] == 2'b1)}} & {regData[2], regData[1], regData[0], 8'b0} |
+                {32{(EX_aluResult[1:0] == 2'b10)}} & {regData[1], regData[0], 16'b0} |
                 {32{(EX_aluResult[1:0] == 2'b11)}} & {regData[0], 24'b0};
 
-assign EX_TrueWriteData = {32{(EX_MemDataCombine == 3'b01)}} & SWLRes | 
-                          {32{(EX_MemDataCombine == 3'b10)}} & SWRRes |
-                          {32{(EX_MemDataCombine == 3'b0)}} & EX_WriteData;
+assign EX_TrueTrueWriteData = {32{(EX_MemDataCombine == 2'b01)}} & SWLRes | 
+                          {32{(EX_MemDataCombine == 2'b10)}} & SWRRes |
+                          {32{(EX_MemDataCombine == 2'b0)}} & EX_TrueWriteData;
 
 assign data_sram_wen = data_wen_sel;
-assign data_sram_wdata = EX_TrueWriteData;
+assign data_sram_wdata = EX_TrueTrueWriteData;
 assign data_sram_addr = EX_aluResult;
 
 endmodule

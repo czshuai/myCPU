@@ -21,14 +21,14 @@ module mycpu_top(
 
 assign inst_sram_wen = 4'b0;
 
-reg [31:0] CP0 [4:0]; //CP0[rt/rd, sel]  sel始终为零
+reg [31:0] CP0 [15:0]; //CP0[rt/rd, sel]  sel始终为零
 
 wire InsExcepAdEL;
 wire valid_in;
 wire IF_ready_go, IF_allowin, IF_to_ID_valid;
 reg IF_valid;
-reg IF_InsExcepAdEL; //记录取�?�是否产生例�?
-wire IF_DelaySlot; //判断当前指令是否在延迟槽中
+reg IF_InsExcepAdEL; //记录取�?�是否产生例�???
+wire IF_DelaySlot; //判断当前指令是否在延迟槽�??
 
 //ID parameter
 wire ID_allowin, ID_to_EX_valid;
@@ -62,8 +62,8 @@ wire ID_Mul; //乘法使能信号
 wire ID_MulSigned; //是否为有符号乘法
 wire ID_SpecialRegWri; //是否写特殊寄存器
 wire ID_SpecialRegRead; //是否读特殊寄存器
-wire [31:0] ID_ReadSpecialReg; //特殊寄存器的�?
-wire [1:0] ID_SpecialRegSel; //选择HI或�?�LO寄存�?????? 01选择lo 10选择hi
+wire [31:0] ID_ReadSpecialReg; //特殊寄存器的�???
+wire [1:0] ID_SpecialRegSel; //选择HI或�?�LO寄存�???????? 01选择lo 10选择hi
 wire [2:0] ID_MemDataWidth; //内存数据宽度
 wire [1:0] ID_MemDataCombine; //拼合内存数据
 wire [4:0] ID_CP0Sel;
@@ -72,6 +72,8 @@ wire ID_ExcepSYS;
 wire ID_ExcepBP;
 wire ID_InsExcepAdEL;
 wire ID_ExcepRI;
+wire ID_DelaySlot;
+wire ID_ERET;
 
 //EX Parameter
 wire EX_allowin, EX_to_ME_valid;
@@ -90,8 +92,8 @@ wire [1:0] EX_SpecialRegSel;
 wire [31:0] EX_ReadSpecialReg;
 wire [31:0] EX_WriteData;
 wire [31:0] EX_aluResult;
-wire [31:0] EX_LOVal; //保存LO寄存器的�??????
-wire [31:0] EX_HIVal; //保存HI寄存器的�??????
+wire [31:0] EX_LOVal; //保存LO寄存器的�????????
+wire [31:0] EX_HIVal; //保存HI寄存器的�????????
 wire [2:0] EX_MemDataWidth;
 wire [1:0] EX_MemDataCombine;
 wire [31:0] EX_rdata2;
@@ -104,6 +106,9 @@ wire EX_ExcepAdES;
 wire EX_InsExcepAdEL;
 wire EX_DataExcepAdEL;
 wire EX_ExcepRI;
+wire EX_DelaySlot;
+wire EX_Excep; //
+wire EX_ERET;
 
 //ME Parameter
 wire ME_ready_go, ME_allowin, ME_to_WB_valid;
@@ -118,6 +123,10 @@ wire [31:0] ME_readData;
 wire [31:0] ME_LOVal;
 wire [31:0] ME_HIVal;
 reg [1:0] ME_SpecialRegSel;
+reg ME_InsExcepAdEL;
+reg [31:0] ME_rdata2;
+reg [4:0] ME_CP0Sel;
+reg ME_CP0Wri;
 
 //WB parameter
 wire WB_ready_go, WB_allowin;
@@ -134,12 +143,14 @@ reg [1:0] WB_SpecialRegSel;
 reg [31:0] WB_rdata2;
 reg [4:0] WB_CP0Sel;
 reg WB_CP0Wri;
-wire WB_CP0SpecWri; //产生例外时对CP0进行�?
-wire WB_ExcepEN; //出现例外则无效五级流�?
+wire WB_CP0SpecWri; //产生例外时对CP0进行�???
+wire WB_ExcepEN; //出现例外则无效五级流�???
 wire WB_ExcepInt; //中断例外
+reg WB_DelaySlot;
 
 wire [2:0] ForwardA; //srcA 前�??
 wire [2:0] ForwardB; //srcB
+wire [2:0] ForwardCP0; //CP0寄存器的前递
 
 //IF
 reg [31:0] PC;
@@ -152,7 +163,7 @@ assign IF_ready_go = valid_in;
 assign IF_to_ID_valid = IF_valid && IF_ready_go;
 assign inst_sram_wen = 4'b0;
 assign inst_sram_en = IF_allowin;
-assign next_PC = WB_ExcepEN ? 32'hbfc00380 : (ID_PCSrc ? ID_PCBranch : (PC + 32'd4));
+assign next_PC = (WB_ExcepEN) ? 32'hbfc00380 : (ID_PCSrc ? ID_PCBranch : (PC + 32'd4));
 assign inst_sram_addr = next_PC;
 assign ins_reg = inst_sram_rdata;
 assign InsExcepAdEL = ~(next_PC[1:0] == 2'b0);
@@ -198,6 +209,8 @@ IDStage IDInterface(
     .WB_LOVal(WB_LOVal),
     .WB_ExcepEN(WB_ExcepEN),
     .WB_ExcepInt(WB_ExcepInt),
+    .WB_DelaySlot(WB_DelaySlot),
+    .ME_InsExcepAdEL(ME_InsExcepAdEL),
 
     .ForwardA(ForwardA),
     .ForwardB(ForwardB),
@@ -208,6 +221,11 @@ IDStage IDInterface(
     .CP0Status(CP0[12]),
     .CP0Cause(CP0[13]),
     .CP0EPC(CP0[14]),
+    
+    .ForwardCP0(ForwardCP0),
+    .EX_rdata2(EX_rdata2),
+    .ME_rdata2(ME_rdata2),
+    .WB_rdata2(WB_rdata2),
 
     .ID_valid(ID_valid),
     .ID_allowin(ID_allowin),
@@ -250,6 +268,7 @@ IDStage IDInterface(
     .ID_MemDataWidth(ID_MemDataWidth),
     .ID_MemDataCombine(ID_MemDataCombine),
     .ID_DelaySlot(ID_DelaySlot),
+    .ID_ERET(ID_ERET),
 
     .ID_CP0Sel(ID_CP0Sel),
     .ID_CP0Wri(ID_CP0Wri),
@@ -295,6 +314,7 @@ EXStage EXInterface (
     .ID_MemDataWidth(ID_MemDataWidth),
     .ID_MemDataCombine(ID_MemDataCombine),
     .ID_DelaySlot(ID_DelaySlot),
+    .ID_ERET(ID_ERET),
 
     .ID_CP0Sel(ID_CP0Sel),
     .ID_CP0Wri(ID_CP0Wri),
@@ -334,6 +354,7 @@ EXStage EXInterface (
     .EX_MemDataCombine(EX_MemDataCombine),
     .EX_rdata2(EX_rdata2),
     .EX_DelaySlot(EX_DelaySlot),
+    .EX_ERET(EX_ERET),
     
     .EX_LOVal(EX_LOVal),
     .EX_HIVal(EX_HIVal),
@@ -353,6 +374,7 @@ EXStage EXInterface (
     .EX_InsExcepAdEL(EX_InsExcepAdEL),
     .EX_DataExcepAdEL(EX_DataExcepAdEL),
     .EX_ExcepRI(EX_ExcepRI),
+    .EX_Excep(EX_Excep),
 
     .data_sram_wen(data_sram_wen),
     .data_sram_addr(data_sram_addr),
@@ -379,7 +401,7 @@ reg [31:0] ME_ReadLoReg;
 reg ME_Mul;
 reg [2:0] ME_MemDataWidth;
 reg [1:0] ME_MemDataCombine;
-reg [31:0] ME_rdata2;
+//reg [31:0] ME_rdata2;
 //wire [31:0] ME_LOVal;
 //wire [31:0] ME_HIVal;
 //wire [63:0] ME_MulRes; //mul计算结果
@@ -387,23 +409,25 @@ reg [31:0] ME_rdata2;
 //reg [4:0] ME_WriteReg; //写入寄存器号
 //reg ME_RegWrite; //寄存器写使能
 reg [31:0] ME_ReadSpecialReg;
-reg [4:0] ME_CP0Sel;
-reg ME_CP0Wri;
+//reg [4:0] ME_CP0Sel;
+//reg ME_CP0Wri;
 reg ME_ExcepSYS;
 reg ME_ExcepBP;
 reg ME_ExcepOv;
 reg ME_ExcepAdES;
-reg ME_InsExcepAdEL;
+//reg ME_InsExcepAdEL;
 reg ME_DataExcepAdEL;
 reg ME_ExcepRI;
 reg ME_DelaySlot;
+wire ME_Excep;
+reg ME_ERET;
 
 assign ME_ready_go = 1'b1;
 assign ME_allowin = !ME_valid || ME_ready_go && WB_allowin;
 assign ME_to_WB_valid = ME_valid && ME_ready_go;
 
-//存在例外取消内存�?
-assign data_sram_en = (EX_MemToReg || EX_MemWrite) && EX_valid && ~(EX_ExcepBP || EX_ExcepOv || EX_ExcepSYS || EX_ExcepAdES || EX_ExcepRI || EX_InsExcepAdEL || EX_DataExcepAdEL); //同步RAM 上一拍输入， 下一拍得到结�??????
+//存在例外取消内存�???
+assign data_sram_en = (EX_MemToReg || EX_MemWrite) && EX_valid && ~(EX_Excep || ME_Excep || WB_ExcepEN || (EX_DelaySlot && ID_InsExcepAdEL)) ; //同步RAM 上一拍输入， 下一拍得到结�????????
 assign ME_readData = data_sram_rdata;
 
 always @(posedge clk) begin
@@ -444,10 +468,13 @@ always @(posedge clk) begin
         ME_DataExcepAdEL <= EX_DataExcepAdEL;
         ME_ExcepRI <= EX_ExcepRI;
         ME_DelaySlot <= EX_DelaySlot;
+        ME_ERET <= EX_ERET;
     end
 end
                            
 assign ME_FinalData = ME_SpecialRegRead ? ME_ReadSpecialReg : (ME_WriPCPlus8 ? (ME_NextPC + 32'd4) : ME_aluResult); //jal特殊处理
+
+assign ME_Excep = (ME_ExcepRI || ME_DataExcepAdEL || ME_InsExcepAdEL || ME_ExcepAdES || ME_ExcepOv || ME_ExcepBP || ME_ExcepSYS) && ME_valid;
 
 //乘法数据处理
 assign ME_LOVal = ME_Mul ? ME_MulRes[31:0] : ME_OldLOVal;
@@ -481,10 +508,11 @@ reg WB_ExcepAdES;
 reg WB_InsExcepAdEL;
 reg WB_DataExcepAdEL;
 reg WB_ExcepRI;
-//wire WB_CP0SpecWri; //产生例外时对CP0进行�?
-//wire WB_ExcepEN; //出现例外则无效五级流�?
-reg WB_DelaySlot;
+//wire WB_CP0SpecWri; //产生例外时对CP0进行�???
+//wire WB_ExcepEN; //出现例外则无效五级流�???
+//reg WB_DelaySlot;
 //wire WB_ExcepInt; //中断例外
+reg WB_ERET;
 
 assign WB_ready_go = 1'b1;
 assign WB_allowin = 1'b1;
@@ -523,6 +551,7 @@ always @(posedge clk) begin
         WB_DataExcepAdEL <= ME_DataExcepAdEL;
         WB_ExcepRI <= ME_ExcepRI;
         WB_DelaySlot <= ME_DelaySlot;
+        WB_ERET <= ME_ERET;
     end
 end
 
@@ -576,24 +605,31 @@ assign WB_FinalData = WB_MemToReg ? WB_TrueTrueReadData : WB_OldFinalData;
 //CP0 count 寄存器以1/2频率自增
 reg count;
 always @(posedge clk) begin 
-    count <= count + 1'b1;
-    if (count) begin
-        CP0[5'd9] <= CP0[5'd9] + 32'd1;
+    if (~resetn) begin
+        count <= 1'b0;
+    end
+    else begin
+        count <= count + 1'b1;
+        if (count) begin
+            CP0[9] <= CP0[9] + 32'd1;
+        end
     end
 end
 
-//触发计时器中断
+//触发计时器中�??
 always @(posedge clk) begin
-    if (CP0[5'd9] == CP0[5'd11]) begin 
-        CP0[5'd13][30] <= 1'b1;
-        CP0[5'd13][15] <= 1'b1; //绑定在硬件中断5号上
+    if (CP0[9] == CP0[11]) begin
+        CP0[13][30] <= 1'b1;
+        CP0[13][15] <= 1'b1; //绑定在硬件中�??5号上
+    end
+    else begin
+        CP0[13][30] <= 1'b0;
+        CP0[13][15] <= 1'b0;
     end
 end
 
 //中断采样
-always @(posedge clk) begin
-    WB_ExcepInt <= (~CP0[5'd12][1] && CP0[5'd12][0] && (CP0[5'd12][15:8] & CP0[5'd13][15:8]));
-end
+assign WB_ExcepInt = (~CP0[12][1] && CP0[12][0] && (CP0[12][15:8] & CP0[13][15:8]));
 
 //产生例外的指令会取消当前指令的所有数据写使能
 assign WB_CP0SpecWri = WB_ExcepSYS || WB_ExcepBP || WB_ExcepOv || WB_ExcepAdES || WB_InsExcepAdEL || WB_DataExcepAdEL || WB_ExcepRI || WB_ExcepInt; //判断是否产生例外
@@ -602,76 +638,81 @@ assign WB_ExcepEN = WB_CP0SpecWri && WB_valid;
 //CP0寄存器写
 always @(posedge clk) begin
     if (~resetn) begin
-        CP0[5'd12] <= {9'b0, 1'b1, 6'b0, 8'b0, 6'b0, 1'b0, 1'b0}; //status寄存器初始化
-        CP0[5'd13] <= {1'b0, 1'b0, 14'b0, 6'b0, 2'b0, 1'b0, 5'b0, 2'b0}; //cause
+        CP0[12] <= {9'b0, 1'b1, 6'b0, 8'b0, 6'b0, 1'b0, 1'b0}; //status寄存器初始化
+        CP0[13] <= {1'b0, 1'b0, 14'b0, 6'b0, 2'b0, 1'b0, 5'b0, 2'b0}; //cause
     end
     else if (WB_CP0SpecWri && WB_valid) begin //例外响应
         
-        if (~CP0[5'd12][1]) begin //EXL为1时，EPC在发生新的例外时不做更新
-            CP0[5'd14] <= WB_ExcepInt ? WB_NextPC : (WB_DelaySlot ? (WB_PC - 32'd4) : WB_PC); //中断例外需要执行完当前指令， 返回至下一条指令
-            CP0[5'd13][31] <= WB_DelaySlot;
+        if (~CP0[12][1]) begin //EXL�??1时，EPC在发生新的例外时不做更新
+            CP0[14] <= WB_DelaySlot ? (WB_PC - 32'd4) : WB_PC; //中断例外�??要执行完当前指令�?? 返回至下�??条指�??
+            CP0[13][31] <= WB_DelaySlot;
         end
 
-        CP0[5'd12][1] <= 1'b1;
+        CP0[12][1] <= 1'b1;
 
         if (WB_ExcepInt) begin //控制例外的优先级
-            CP0[5'd13][6:2] <= 5'h00;
+            CP0[13][6:2] <= 5'h00;
         end
         else if (WB_InsExcepAdEL) begin 
-            CP0[5'd13][6:2] <= 5'h04;
-            CP0[5'd8] <= WB_PC;
+            CP0[13][6:2] <= 5'h04;
+            CP0[8] <= WB_PC;
         end
         else if (WB_ExcepRI) begin
-            CP0[5'd13][6:2] <= 5'h0a;
+            CP0[13][6:2] <= 5'h0a;
         end
         else if (WB_ExcepOv) begin
-            CP0[5'd13][6:2] <= 5'h0c;
+            CP0[13][6:2] <= 5'h0c;
         end 
         else if (WB_ExcepBP) begin
-            CP0[5'd13][6:2] <= 5'h09;
+            CP0[13][6:2] <= 5'h09;
         end 
         else if (WB_ExcepSYS) begin
-            CP0[5'd13][6:2] <= 5'h08;
+            CP0[13][6:2] <= 5'h08;
         end 
         else if (WB_ExcepAdES) begin
-            CP0[5'd13][6:2] <= 5'h05;
-            CP0[5'd8] <= WB_aluResult;
+            CP0[13][6:2] <= 5'h05;
+            CP0[8] <= WB_aluResult;
         end
-        else if (WB_ExcepAdES) begin
-            CP0[5'd13][6:2] <= 5'h04;
-            CP0[5'd8] <= WB_aluResult;
+        else if (WB_DataExcepAdEL) begin
+            CP0[13][6:2] <= 5'h04;
+            CP0[8] <= WB_aluResult;
         end
 
     end
-    else if (WB_CP0Wri && WB_valid) begin //由指令控制的CP0�? 
+    else if (WB_CP0Wri && WB_valid) begin //由指令控制的CP0�??? 
 
         if (WB_CP0Sel == 5'd9) begin //控制读写权限
-            CP0[5'd9] <= WB_rdata2;
+            CP0[9] <= WB_rdata2;
         end
         else if (WB_CP0Sel == 5'd11) begin
-            CP0[5'd11] <= WB_rdata2;
-            CP0[5'd13][30] <= 1'b0;
+            CP0[11] <= WB_rdata2;
+            CP0[13][30] <= 1'b0;
         end
         else if (WB_CP0Sel == 5'd12) begin
-            CP0[5'd12][15:8] <= WB_rdata2[15:8];
-            CP0[5'd12][1:0] <= WB_rdata2[1:0];
+            CP0[12][15:8] <= WB_rdata2[15:8];
+            CP0[12][1:0] <= WB_rdata2[1:0];
         end 
         else if (WB_CP0Sel == 5'd13) begin
-            CP0[5'd13][9:8] <= WB_rdata2[9:8];
+            CP0[13][9:8] <= WB_rdata2[9:8];
         end
         else if (WB_CP0Sel == 5'd14) begin
-            CP0[5'd14] <= WB_rdata2;
+            CP0[14] <= WB_rdata2;
         end 
 
     end
+    
+    if (resetn && WB_valid && WB_ERET) begin
+        CP0[12][1] <= 1'b0;
+    end
+    
 end
 
 assign debug_wb_pc = WB_PC;
-assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid && (~WB_ExcepEN || WB_ExcepInt)}}; //异步中断，当前指令是有效的可以执行
+assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid && (~WB_ExcepEN) && ~(WB_DelaySlot && ME_InsExcepAdEL)}}; //异步中断，当前指令是有效的可以执�??
 assign debug_wb_rf_wnum = WB_WriteReg;
 assign debug_wb_rf_wdata = WB_FinalData;
 
-//冲突�??????测单�??????
+//冲突�????????测单�????????
 //wire [2:0] ForwardA;
 //wire [2:0] ForwardB;
 
@@ -685,6 +726,10 @@ assign ForwardA[2] = (ID_rs == WB_WriteReg) && WB_valid && WB_RegWrite;
 assign ForwardB[0] = (ID_rt == EX_WriteReg) && EX_valid && EX_RegWrite;
 assign ForwardB[1] = (ID_rt == ME_WriteReg) && ME_valid && ME_RegWrite;
 assign ForwardB[2] = (ID_rt == WB_WriteReg) && WB_valid && WB_RegWrite;
+
+assign ForwardCP0[0] = (ID_CP0Sel == EX_CP0Sel) && EX_valid && EX_CP0Wri;
+assign ForwardCP0[1] = (ID_CP0Sel == ME_CP0Sel) && ME_valid && ME_CP0Wri;
+assign ForwardCP0[2] = (ID_CP0Sel == WB_CP0Sel) && WB_valid && WB_CP0Wri;
 
 endmodule
 

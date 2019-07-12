@@ -22,6 +22,8 @@ module IDStage (
     input [31:0] WB_HIVal, WB_LOVal,
     input WB_ExcepEN,
     input WB_ExcepInt,
+    input WB_DelaySlot,
+    input ME_InsExcepAdEL,
 
     input [2:0] ForwardA, ForwardB, 
 
@@ -31,6 +33,11 @@ module IDStage (
     input [31:0] CP0Status,
     input [31:0] CP0Cause,
     input [31:0] CP0EPC, 
+
+    input [2:0] ForwardCP0,
+    input [31:0] EX_rdata2,
+    input [31:0] ME_rdata2,
+    input [31:0] WB_rdata2,
 
     output reg ID_valid,
     output ID_allowin,
@@ -69,6 +76,7 @@ module IDStage (
     output [2:0] ID_MemDataWidth,
     output [1:0] ID_MemDataCombine,
     output reg ID_DelaySlot,
+    output ID_ERET,
 
     output [4:0] ID_CP0Sel,
     output ID_CP0Wri,
@@ -86,7 +94,7 @@ wire [31:0] rdata1;
 wire [31:0] rdata2;
 wire [31:0] ID_SignExt_imm150;
 wire [31:0] ID_UnSignExt_imm150;
-wire ID_UnSignExt150; //ins[15:0]无符号扩�?????
+wire ID_UnSignExt150; //ins[15:0]无符号扩�???????
 wire [63:0] ID_op_sel;
 wire [2:0] ID_BranchCond; //分支跳转条件 001 ID_Equal  010 ID_NoEqual  011 gz  100 g  101 le  110 l
 wire ID_DirectBranch; //直接跳转 无cond
@@ -97,7 +105,7 @@ wire ID_Jalr; //是否为Jalr跳转
 wire [31:0] ID_NoDirectPCBranch; //非直接跳转的PC地址
 wire [31:0] ID_DirectPCBranch; //直接跳转的PC地址
 wire ID_Equal; //分支条件测试相等
-wire ID_NoEqual; //不相�??
+wire ID_NoEqual; //不相�????
 wire ID_GreatEqual; //大于等于
 wire ID_Great; //大于
 wire ID_LowEqual; //小于等于
@@ -106,13 +114,14 @@ wire ID_BranchEnable; //branch使能信号 跳转条件是否成立
 wire [31:0] ID_ReadHiReg; //读取的特殊寄存器的�??
 wire [31:0] ID_ReadLoReg;
 wire ID_CP0Rea;
-wire ID_ERET;
+//wire ID_ERET;
 wire [31:0] CP0SelData;
+wire [31:0] NewCP0SelData;
 
-//特殊寄存�?????
-reg [31:0] LO, HI; //保存除法的结�?????
+//特殊寄存�???????
+reg [31:0] LO, HI; //保存除法的结�???????
 
-assign ID_ready_go = ~ID_Stall;
+assign ID_ready_go = ~ID_Stall || WB_ExcepEN;
 assign ID_allowin = !ID_valid || ID_ready_go && EX_allowin;
 assign ID_to_EX_valid = ID_valid && ID_ready_go;
 
@@ -138,12 +147,12 @@ assign ID_rt = ID_ins[20:16];
 assign ID_rd = ID_ins[15:11];
 assign ID_InsIdx = ID_ins[25:0];
 
-regfile register_set(.clk(clk), .raddr1(ID_rs), .rdata1(rdata1), .raddr2(ID_rt), .rdata2(rdata2), .we(WB_RegWrite && WB_valid && (~WB_ExcepEN || WB_ExcepInt)), .waddr(WB_WriteReg), .wdata(WB_FinalData));
+regfile register_set(.clk(clk), .raddr1(ID_rs), .rdata1(rdata1), .raddr2(ID_rt), .rdata2(rdata2), .we(WB_RegWrite && WB_valid && (~WB_ExcepEN) && ~(WB_DelaySlot && ME_InsExcepAdEL)), .waddr(WB_WriteReg), .wdata(WB_FinalData));
 
 //符号扩展
-assign ID_SignExt_imm150 = {{16{ID_ins[15]}}, ID_ins[15:0]}; //150有符号扩�?????
-assign ID_UnSignExt_imm150 = {16'b0, ID_ins[15:0]}; //150无符号扩�?????
-assign ID_UnSignExt_imm106 = {27'b0, ID_ins[10:6]}; //106无符号扩�?????
+assign ID_SignExt_imm150 = {{16{ID_ins[15]}}, ID_ins[15:0]}; //150有符号扩�???????
+assign ID_UnSignExt_imm150 = {16'b0, ID_ins[15:0]}; //150无符号扩�???????
+assign ID_UnSignExt_imm106 = {27'b0, ID_ins[10:6]}; //106无符号扩�???????
 assign ID_Ext_imm150 = ID_UnSignExt150 ? ID_UnSignExt_imm150 : ID_SignExt_imm150;
 
 //寄存器堆前�?? //如果是跳转指令，数据前�?�到译码阶段
@@ -161,9 +170,11 @@ assign CP0SelData = {32{(ID_CP0Sel == 5'd8)}} & CP0BadVAddr |
                     {32{(ID_CP0Sel == 5'd13)}} & CP0Cause |
                     {32{(ID_CP0Sel == 5'd14)}} & CP0EPC;
 
+assign NewCP0SelData = ForwardCP0[0] ? EX_rdata2 : (ForwardCP0[1] ? ME_rdata2 : (ForwardCP0[2] ? WB_rdata2 : CP0SelData));
+
 assign ID_ReadSpecialReg = {32{ID_SpecialRegSel[0]}} & ID_ReadLoReg |
                            {32{ID_SpecialRegSel[1]}} & ID_ReadHiReg | 
-                           {32{ID_CP0Rea}} & CP0SelData;  //从特殊寄存器到特殊寄存器的数据�?�路 (Lo Hi CP0) 寄存�?
+                           {32{ID_CP0Rea}} & NewCP0SelData;  //从特殊寄存器到特殊寄存器的数据�?�路 (Lo Hi CP0) 寄存�???
 
 assign ID_op_sel[0] = (ID_ins[31:26] == 6'b100011); //op译码 lw
 assign ID_op_sel[1] = (ID_ins[31:26] == 6'b101011); //sw
@@ -225,16 +236,16 @@ assign ID_op_sel[56] = (ID_ins[31:26] == 6'b010000) && (ID_ins[25:21] == 5'b0010
 assign ID_op_sel[57] = (ID_ins[31:26] == 6'b010000) && (ID_ins[25:21] == 5'b00000); //MFC0
 assign ID_op_sel[58] = (ID_ins[31:26] == 6'b010000) && (ID_ins[25] == 1'b1) && (ID_ins[5:0] == 6'b011000); //ERET
 assign ID_op_sel[59] = (ID_ins[31:26] == 6'b000000) && (ID_ins[5:0] == 6'b001100); //SYSCALL
-assign ID_op_sel[60] = (ID_ins[31:26] == 6'b000000) && (ID_ins[5:0] == 6'b001100); //BREAK
+assign ID_op_sel[60] = (ID_ins[31:26] == 6'b000000) && (ID_ins[5:0] == 6'b001101); //BREAK
 
-assign ID_ExcepRI = (ID_op_sel[60:0] == 61'b0); //产生保留指令例外 随着指令的添加需要修�?
+assign ID_ExcepRI = (ID_op_sel[60:0] == 61'b0); //产生保留指令例外 随着指令的添加需要修�???
 
-//有符号加减单独列出为了处理例�?????
+//有符号加减单独列出为了处理例�???????
 assign ID_ALUControl = ({5{ID_op_sel[3] || ID_op_sel[4] || ID_op_sel[0] || ID_op_sel[1] || ID_op_sel[46] || ID_op_sel[47] || ID_op_sel[48] || ID_op_sel[49] || ID_op_sel[52] || ID_op_sel[53]}} && 5'b0) //000 加法
                        | ({5{ID_op_sel[2]}} & 5'b1) //001 lui 高位加载
                        | ({5{ID_op_sel[5]}} & 5'b10) //010 减法
-                       | ({5{ID_op_sel[6] || ID_op_sel[22]}} & 5'b11) //011 有符号比�?????
-                       | ({5{ID_op_sel[7] || ID_op_sel[23]}} & 5'b100) //100 无符号比�?????
+                       | ({5{ID_op_sel[6] || ID_op_sel[22]}} & 5'b11) //011 有符号比�???????
+                       | ({5{ID_op_sel[7] || ID_op_sel[23]}} & 5'b100) //100 无符号比�???????
                        | ({5{ID_op_sel[8] || ID_op_sel[24]}} & 5'b101) //101 逻辑and
                        | ({5{ID_op_sel[9] || ID_op_sel[25]}} & 5'b110) //110 逻辑or
                        | ({5{ID_op_sel[10] || ID_op_sel[26]}} & 5'b111) //111 逻辑异或
@@ -249,7 +260,7 @@ assign ID_ALUControl = ({5{ID_op_sel[3] || ID_op_sel[4] || ID_op_sel[0] || ID_op
 assign ID_RegWrite = ~(ID_op_sel[1] || ID_op_sel[15] || ID_op_sel[16] || ID_op_sel[18] || ID_op_sel[30] || ID_op_sel[31] ||
                       ID_op_sel[32] || ID_op_sel[33] || ID_op_sel[36] || ID_op_sel[37] || ID_op_sel[38] || ID_op_sel[39] ||
                       ID_op_sel[40] || ID_op_sel[41] || ID_op_sel[42] || ID_op_sel[52] || ID_op_sel[53] || ID_op_sel[54] || 
-                      ID_op_sel[55] || ID_op_sel[56] || ID_op_sel[59] || ID_op_sel[60]); //设置控制信号 是否写回寄存�????? 是否写普通寄存器 其他的寄存器比如LO,HI或�?�CP0寄存器使用其他的使能标志
+                      ID_op_sel[55] || ID_op_sel[56] || ID_op_sel[59] || ID_op_sel[60]); //设置控制信号 是否写回寄存�??????? 是否写普通寄存器 其他的寄存器比如LO,HI或�?�CP0寄存器使用其他的使能标志
 
 assign ID_MemWrite = ID_op_sel[1] || ID_op_sel[52] || ID_op_sel[53] || ID_op_sel[54] || ID_op_sel[55]; //是否写Memory
 assign ID_MemToReg = ID_op_sel[0] || ID_op_sel[46] || ID_op_sel[47] || ID_op_sel[48] || ID_op_sel[49] || ID_op_sel[50] || ID_op_sel[51]; // 1 选择 readData; 0 选择 aluResult
@@ -259,13 +270,13 @@ assign ID_RegDst = (ID_ins[31:26] == 6'b0);
 assign ID_ALUSrc2 = (ID_ins[31:26] == 6'b0);
 assign ID_ALUSrc1 = ~(ID_op_sel[12] || ID_op_sel[13] || ID_op_sel[14]); // 1 选择 rdata1; 0 选择 UnSignExt_imm106
 assign ID_Branch = ID_op_sel[15] || ID_op_sel[16] || ID_op_sel[17] || ID_op_sel[18] || ID_op_sel[38] || ID_op_sel[39] ||
-                   ID_op_sel[40] || ID_op_sel[41] || ID_op_sel[42] || ID_op_sel[43] || ID_op_sel[44] || ID_op_sel[45];
+                   ID_op_sel[40] || ID_op_sel[41] || ID_op_sel[42] || ID_op_sel[43] || ID_op_sel[44] || ID_op_sel[45] || ID_op_sel[58];
 
 assign ID_BranchCond = ({3{ID_op_sel[16]}} & 3'b010) | ({3{ID_op_sel[15]}} & 3'b001) | 
                        ({3{ID_op_sel[39] || ID_op_sel[43]}} & 3'b011) | ({3{ID_op_sel[40]}} & 3'b100) |
                        ({3{ID_op_sel[41]}} & 3'b101) | ({3{ID_op_sel[42] || ID_op_sel[44]}} & 3'b110);  //001 ID_Equal  010 ID_NoEqual  011 gz  100 g  101 le  110 l
 
-assign ID_Jal = ID_op_sel[17]; //1 采用jal跳转信号的特殊处�?????
+assign ID_Jal = ID_op_sel[17]; //1 采用jal跳转信号的特殊处�???????
 assign ID_WriReg31 = ID_op_sel[17] || ID_op_sel[43] || ID_op_sel[44];
 assign ID_WriPCPlus8 = ID_op_sel[17] || ID_op_sel[43] || ID_op_sel[44] || ID_op_sel[45];
 assign ID_J = ID_op_sel[38];
@@ -278,19 +289,19 @@ assign ID_DivSigned = ID_op_sel[30];
 assign ID_Mul = ID_op_sel[32] || ID_op_sel[33];
 assign ID_MulSigned = ID_op_sel[32];
 assign ID_SpecialRegWri = ID_op_sel[30] || ID_op_sel[31] || ID_op_sel[32] || ID_op_sel[33] || ID_op_sel[36] || ID_op_sel[37];
-assign ID_SpecialRegRead = ID_op_sel[34] || ID_op_sel[35] || ID_op_sel[57]; //特殊寄存器的读使用同�?个数据�?�路
-assign ID_SpecialRegSel[0] = ID_op_sel[30] || ID_op_sel[31] || ID_op_sel[32] || ID_op_sel[33] || ID_op_sel[35] || ID_op_sel[37]; //选择lo特殊寄存�?????
-assign ID_SpecialRegSel[1] = ID_op_sel[30] || ID_op_sel[31] || ID_op_sel[32] || ID_op_sel[33] || ID_op_sel[34] || ID_op_sel[36]; //选择hi特殊寄存�?????
+assign ID_SpecialRegRead = ID_op_sel[34] || ID_op_sel[35] || ID_op_sel[57]; //特殊寄存器的读使用同�???个数据�?�路
+assign ID_SpecialRegSel[0] = ID_op_sel[30] || ID_op_sel[31] || ID_op_sel[32] || ID_op_sel[33] || ID_op_sel[35] || ID_op_sel[37]; //选择lo特殊寄存�???????
+assign ID_SpecialRegSel[1] = ID_op_sel[30] || ID_op_sel[31] || ID_op_sel[32] || ID_op_sel[33] || ID_op_sel[34] || ID_op_sel[36]; //选择hi特殊寄存�???????
 assign ID_MemDataWidth = ({3{ID_op_sel[46] || ID_op_sel[52]}} & 3'b001) |
                          ({3{ID_op_sel[47]}} & 3'b010) | 
                          ({3{ID_op_sel[48] || ID_op_sel[53]}} & 3'b011) |
                          ({3{ID_op_sel[49]}} & 3'b100) |
                          ({3{ID_op_sel[0] || ID_op_sel[50] || ID_op_sel[51] || ID_op_sel[1] || ID_op_sel[54] || ID_op_sel[55]}} & 3'b101);
 //选择内存数据宽度 001 选择 B  010 选择 BU 011 H  100 hu  101 w
-//存储和加载并�?? 上下两个数据
+//存储和加载并�???? 上下两个数据
 assign ID_MemDataCombine = ({2{ID_op_sel[50] || ID_op_sel[54]}} & 2'b01) | ({2{ID_op_sel[51] || ID_op_sel[55]}} & 2'b10);
 //01 lwl  10 lwr
-assign ID_CP0Sel = ({5{ID_op_sel[56]}} & ID_rd) | ({5{ID_op_sel[57]}} & ID_rt); //CP0[]
+assign ID_CP0Sel = ({5{ID_op_sel[56] || ID_op_sel[57]}} & ID_rd) | ({5{ID_op_sel[58]}} & 5'd14); //CP0[]
 assign ID_CP0Wri = ID_op_sel[56]; //CP0寄存器写
 assign ID_CP0Rea = ID_op_sel[57]; //CP0寄存器读
 assign ID_ERET = ID_op_sel[58]; //ERET指令 特殊处理
@@ -300,7 +311,7 @@ assign ID_ExcepBP = ID_op_sel[60]; //BREAK例外使能
 //分支处理
 assign ID_NoDirectPCBranch = (ID_SignExt_imm150 << 2) + ID_NextPC;
 assign ID_DirectPCBranch = {ID_NextPC[31:28], ID_InsIdx, 2'b0};
-assign ID_PCBranch = ID_ERET ? CP0EPC : ((ID_Jr || ID_Jalr) ? ID_rdata1 : ((ID_Jal || ID_J) ? ID_DirectPCBranch : ID_NoDirectPCBranch)); //选择jal、jr的特殊处理方�?????
+assign ID_PCBranch = ID_ERET ? (NewCP0SelData) : ((ID_Jr || ID_Jalr) ? ID_rdata1 : ((ID_Jal || ID_J) ? ID_DirectPCBranch : ID_NoDirectPCBranch)); //选择jal、jr的特殊处理方�???????
 assign ID_Equal = (ID_rdata1 == ID_rdata2);//分支条件
 assign ID_NoEqual = ~ID_Equal;
 assign ID_GreatEqual = (ID_rdata1[31] == 1'b0);
@@ -315,7 +326,7 @@ assign ID_BranchEnable = (ID_NoEqual && (ID_BranchCond == 3'b010))
                          || (ID_Low && (ID_BranchCond == 3'b110))
                          || ID_DirectBranch;
 
-assign ID_PCSrc = ID_ERET || (ID_Branch && ID_BranchEnable && ID_valid);   
+assign ID_PCSrc = (ID_ERET || (ID_Branch && ID_BranchEnable)) && ID_valid;
 
 //LO/HI特殊寄存器写
 always @(posedge clk) begin

@@ -107,46 +107,86 @@ wire EX_InsExcepAdEL;
 wire EX_DataExcepAdEL;
 wire EX_ExcepRI;
 wire EX_DelaySlot;
-wire EX_Excep; //
+wire EX_Excep; //EX阶段是否出现例外
 wire EX_ERET;
 
 //ME Parameter
 wire ME_ready_go, ME_allowin, ME_to_WB_valid;
 reg ME_valid;
-wire [31:0] ME_FinalData; //寄存器写入�??
-reg [4:0] ME_WriteReg; //写入寄存器号
-reg ME_RegWrite; //寄存器写使能
-wire [63:0] ME_MulRes; //mul计算结果
-reg ME_SpecialRegWri;
-reg ME_SpecialRegRead;
 wire [31:0] ME_readData;
 wire [31:0] ME_LOVal;
 wire [31:0] ME_HIVal;
+wire [63:0] ME_MulRes; //mul计算结果
+wire [31:0] ME_FinalData; //寄存器写入�??
+wire ME_Excep;
+reg [31:0] ME_NextPC;
+reg [31:0] ME_PC;
+reg ME_MemToReg;
+reg ME_WriPCPlus8;
+reg [31:0] ME_aluResult;
+reg ME_MemWrite;
+reg [31:0] ME_WriteData;
+reg [31:0] ME_OldLOVal;
+reg [31:0] ME_OldHIVal;
 reg [1:0] ME_SpecialRegSel;
-reg ME_InsExcepAdEL;
+reg [31:0] ME_ReadHiReg;
+reg [31:0] ME_ReadLoReg;
+reg ME_SpecialRegWri;
+reg ME_SpecialRegRead
+reg ME_Mul;
+reg [2:0] ME_MemDataWidth;
+reg [1:0] ME_MemDataCombine;
 reg [31:0] ME_rdata2;
+reg [4:0] ME_WriteReg; //写入寄存器号
+reg ME_RegWrite; //寄存器写使能
+reg [31:0] ME_ReadSpecialReg;
 reg [4:0] ME_CP0Sel;
 reg ME_CP0Wri;
+reg ME_ExcepSYS;
+reg ME_ExcepBP;
+reg ME_ExcepOv;
+reg ME_ExcepAdES;
+reg ME_InsExcepAdEL;
+reg ME_DataExcepAdEL;
+reg ME_ExcepRI;
+reg ME_DelaySlot;
+reg ME_ERET;
 
 //WB parameter
 wire WB_ready_go, WB_allowin;
-reg WB_valid;
-reg [31:0] WB_PC;
+wire WB_CP0SpecWri; //产生例外时对CP0进行�???
+wire WB_ExcepEN; //出现例外则无效五级流�???
 wire [31:0] WB_FinalData;
-reg [4:0] WB_WriteReg; //写入寄存器号
-reg WB_RegWrite; //寄存器写使能
-reg [31:0] WB_readData;
+wire [31:0] WB_TrueReadData;
+wire [31:0] WB_TrueTrueReadData;
+wire WB_ExcepInt; //中断例外
+reg WB_valid;
+reg [31:0] WB_NextPC;
+reg [31:0] WB_PC;
+reg WB_MemToReg;
+reg [31:0] WB_aluResult;
+reg [31:0] WB_OldFinalData;
+reg [2:0] WB_MemDataWidth;
+reg [1:0] WB_MemDataCombine;
+reg [31:0] WB_rdata2;
 reg [31:0] WB_LOVal;
 reg [31:0] WB_HIVal;
 reg WB_SpecialRegWri;
 reg [1:0] WB_SpecialRegSel;
-reg [31:0] WB_rdata2;
+reg WB_RegWrite;//寄存器写使能
+reg [4:0] WB_WriteReg;
+reg [31:0] WB_readData;
 reg [4:0] WB_CP0Sel;
 reg WB_CP0Wri;
-wire WB_CP0SpecWri; //产生例外时对CP0进行�???
-wire WB_ExcepEN; //出现例外则无效五级流�???
-wire WB_ExcepInt; //中断例外
+reg WB_ExcepSYS;
+reg WB_ExcepBP;
+reg WB_ExcepOv;
+reg WB_ExcepAdES;
+reg WB_InsExcepAdEL;
+reg WB_DataExcepAdEL;
+reg WB_ExcepRI;
 reg WB_DelaySlot;
+reg WB_ERET;
 
 wire [2:0] ForwardA; //srcA 前�??
 wire [2:0] ForwardB; //srcB
@@ -384,44 +424,6 @@ EXStage EXInterface (
 );
 
 //ME
-reg [31:0] ME_NextPC;
-reg [31:0] ME_PC;
-reg ME_MemToReg;
-reg ME_WriPCPlus8;
-reg [31:0] ME_aluResult;
-reg ME_MemWrite;
-reg [31:0] ME_WriteData;
-reg [31:0] ME_OldLOVal;
-reg [31:0] ME_OldHIVal;
-//reg [1:0] ME_SpecialRegSel;
-reg [31:0] ME_ReadHiReg;
-reg [31:0] ME_ReadLoReg;
-//reg ME_SpecialRegWri;
-//reg ME_SpecialRegRead
-reg ME_Mul;
-reg [2:0] ME_MemDataWidth;
-reg [1:0] ME_MemDataCombine;
-//reg [31:0] ME_rdata2;
-//wire [31:0] ME_LOVal;
-//wire [31:0] ME_HIVal;
-//wire [63:0] ME_MulRes; //mul计算结果
-//wire [31:0] ME_FinalData; //寄存器写入�??
-//reg [4:0] ME_WriteReg; //写入寄存器号
-//reg ME_RegWrite; //寄存器写使能
-reg [31:0] ME_ReadSpecialReg;
-//reg [4:0] ME_CP0Sel;
-//reg ME_CP0Wri;
-reg ME_ExcepSYS;
-reg ME_ExcepBP;
-reg ME_ExcepOv;
-reg ME_ExcepAdES;
-//reg ME_InsExcepAdEL;
-reg ME_DataExcepAdEL;
-reg ME_ExcepRI;
-reg ME_DelaySlot;
-wire ME_Excep;
-reg ME_ERET;
-
 assign ME_ready_go = 1'b1;
 assign ME_allowin = !ME_valid || ME_ready_go && WB_allowin;
 assign ME_to_WB_valid = ME_valid && ME_ready_go;
@@ -481,39 +483,6 @@ assign ME_LOVal = ME_Mul ? ME_MulRes[31:0] : ME_OldLOVal;
 assign ME_HIVal = ME_Mul ? ME_MulRes[63:32] : ME_OldHIVal;
 
 //WB
-reg [31:0] WB_NextPC;
-//reg [31:0] WB_PC;
-reg WB_MemToReg;
-reg [31:0] WB_aluResult;
-reg [31:0] WB_OldFinalData;
-reg [2:0] WB_MemDataWidth;
-reg [1:0] WB_MemDataCombine;
-//reg [31:0] WB_rdata2;
-//reg [31:0] WB_LOVal;
-//reg [31:0] WB_HIVal;
-//reg WB_SpecialRegWri;
-//reg [1:0] WB_SpecialRegSel;
-//reg WB_RegWrite;
-//reg [4:0] WB_WriteReg;
-//wire [31:0] WB_FinalData;
-//reg [31:0] WB_readData;
-wire [31:0] WB_TrueReadData;
-wire [31:0] WB_TrueTrueReadData;
-//reg [4:0] WB_CP0Sel;
-//reg WB_CP0Wri;
-reg WB_ExcepSYS;
-reg WB_ExcepBP;
-reg WB_ExcepOv;
-reg WB_ExcepAdES;
-reg WB_InsExcepAdEL;
-reg WB_DataExcepAdEL;
-reg WB_ExcepRI;
-//wire WB_CP0SpecWri; //产生例外时对CP0进行�???
-//wire WB_ExcepEN; //出现例外则无效五级流�???
-//reg WB_DelaySlot;
-//wire WB_ExcepInt; //中断例外
-reg WB_ERET;
-
 assign WB_ready_go = 1'b1;
 assign WB_allowin = 1'b1;
 
@@ -644,7 +613,7 @@ always @(posedge clk) begin
     else if (WB_CP0SpecWri && WB_valid) begin //例外响应
         
         if (~CP0[12][1]) begin //EXL�??1时，EPC在发生新的例外时不做更新
-            CP0[14] <= WB_DelaySlot ? (WB_PC - 32'd4) : WB_PC; //中断例外�??要执行完当前指令�?? 返回至下�??条指�??
+            CP0[14] <= WB_DelaySlot ? (WB_PC - 32'd4) : WB_PC; //
             CP0[13][31] <= WB_DelaySlot;
         end
 
@@ -708,7 +677,7 @@ always @(posedge clk) begin
 end
 
 assign debug_wb_pc = WB_PC;
-assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid && (~WB_ExcepEN) && ~(WB_DelaySlot && ME_InsExcepAdEL)}}; //异步中断，当前指令是有效的可以执�??
+assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid && (~WB_ExcepEN) && ~(WB_DelaySlot && ME_InsExcepAdEL)}}; //跳转出现无效指令，分支延迟槽内的指令无效
 assign debug_wb_rf_wnum = WB_WriteReg;
 assign debug_wb_rf_wdata = WB_FinalData;
 

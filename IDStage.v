@@ -169,7 +169,7 @@ assign CP0SelData = {32{(ID_CP0Sel == 5'd8)}} & CP0BadVAddr |
                     {32{(ID_CP0Sel == 5'd12)}} & CP0Status |
                     {32{(ID_CP0Sel == 5'd13)}} & CP0Cause |
                     {32{(ID_CP0Sel == 5'd14)}} & CP0EPC;
-
+//状态寄存器前递
 assign NewCP0SelData = ForwardCP0[0] ? EX_rdata2 : (ForwardCP0[1] ? ME_rdata2 : (ForwardCP0[2] ? WB_rdata2 : CP0SelData));
 
 assign ID_ReadSpecialReg = {32{ID_SpecialRegSel[0]}} & ID_ReadLoReg |

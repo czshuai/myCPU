@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 
 module mycpu_top(
+    /*
     //clock and reset
     input clk, resetn,
     //instruction
@@ -17,9 +18,159 @@ module mycpu_top(
     output [31:0] debug_wb_pc, debug_wb_rf_wdata,
     output [3:0] debug_wb_rf_wen,
     output [4:0] debug_wb_rf_wnum
+    */
+
+    input [5:0] int,
+
+    input aclk,
+    input aresetn,
+
+    //axi
+    //ar
+    output [3:0] arid,
+    output [31:0] araddr,
+    output [7:0] arlen,
+    output [2:0] arsize,
+    output [1:0] arburst,
+    output [1:0] arlock,
+    output [3:0] arcache,
+    output [2:0] arprot,
+    output arvalid,
+    input arready,
+
+    //r
+    input [3:0] rid,
+    input [31:0] rdata,
+    input [1:0] rresp,
+    input rlast,
+    input rvalid,
+    output rready,
+
+    //aw
+    output [3:0] awid,
+    output [31:0] awaddr,
+    output [7:0] awlen,
+    output [2:0] awsize,
+    output [1:0] awburst,
+    output [1:0] awlock,
+    output [3:0] awcache,
+    output [2:0] awprot,
+    output awvalid,
+    input awready,
+
+    //w
+    output [3:0] wid,
+    output [31:0] wdata,
+    output [3:0] wstrb,
+    output wlast,
+    output wvalid,
+    input wready,
+
+    //b
+    input [3:0] bid,
+    input [1:0] bresp,
+    input bvalid,
+    output bready,
+
+    //debug
+    output [31:0] debug_wb_pc, 
+    output [31:0] debug_wb_rf_wdata,
+    output [3:0] debug_wb_rf_wen,
+    output [4:0] debug_wb_rf_wnum
+
     );
 
-assign inst_sram_wen = 4'b0;
+wire clk;
+wire resetn;
+
+//inst sram-like
+wire inst_req;
+wire inst_wr;
+wire [1:0] inst_size;
+wire [31:0] inst_addr;
+wire [31:0] inst_wdata;
+wire inst_addr_ok;
+wire inst_data_ok;
+wire [31:0] inst_rdata;
+
+//data sram-like
+wire data_req;
+wire data_wr;
+wire [1:0] data_size;
+wire [31:0] data_addr;
+wire [31:0] data_wdata;
+wire data_addr_ok;
+wire data_data_ok;
+wire [31:0] data_rdata;
+
+assign clk = aclk;
+assign resetn = aresetn; //换个名字
+
+cpu_axi_interface axiInterface (
+    .clk(clk),
+    .resetn(resetn),
+
+    .inst_req(inst_req),
+    .inst_wr(inst_wr),
+    .inst_size(inst_size),
+    .inst_addr(inst_addr),
+    .inst_wdata(inst_wdata),
+    .inst_addr_ok(inst_addr_ok),
+    .inst_data_ok(inst_data_ok),
+    .inst_rdata(inst_rdata),
+
+    .data_req(data_req),
+    .data_wr(data_wr),
+    .data_size(data_size),
+    .data_addr(data_addr),
+    .data_wdata(data_wdata),
+    .data_addr_ok(data_addr_ok),
+    .data_data_ok(data_data_ok),
+    .data_rdata(data_rdata),
+
+    .arid(arid),
+    .araddr(araddr),
+    .arlen(arlen),
+    .arsize(arsize),
+    .arburst(arburst),
+    .arlock(arlock),
+    .arcache(arcache),
+    .arprot(arprot),
+    .arvalid(arvalid),
+    .arready(arready),
+
+    .rid(rid),
+    .rdata(rdata),
+    .rresp(rresp),
+    .rlast(rlast),
+    .rvalid(rvalid),
+    .rready(rready),
+
+    .awid(awid),
+    .awaddr(awaddr),
+    .awlen(awlen),
+    .awsize(awsize),
+    .awburst(awburst),
+    .awlock(awlock),
+    .awcache(awcache),
+    .awprot(awprot),
+    .awvalid(awvalid),
+    .awready(awready),
+
+    .wid(wid),
+    .wdata(wdata),
+    .wstrb(wstrb),
+    .wlast(wlast),
+    .wvalid(wvalid),
+    .wready(wready),
+
+    .bid(bid),
+    .bresp(bresp),
+    .bvalid(bvalid),
+    .bready(bready)
+);
+
+//assign inst_sram_wen = 4'b0;
 
 reg [31:0] CP0 [15:0]; //CP0[rt/rd, sel]  sel始终为零
 
@@ -27,8 +178,8 @@ wire InsExcepAdEL;
 wire valid_in;
 wire IF_ready_go, IF_allowin, IF_to_ID_valid;
 reg IF_valid;
-reg IF_InsExcepAdEL; //记录取�?�是否产生例�???
-wire IF_DelaySlot; //判断当前指令是否在延迟槽�??
+reg IF_InsExcepAdEL; //记录取�?�是否产生例�????
+wire IF_DelaySlot; //判断当前指令是否在延迟槽�???
 
 //ID parameter
 wire ID_allowin, ID_to_EX_valid;
@@ -62,8 +213,8 @@ wire ID_Mul; //乘法使能信号
 wire ID_MulSigned; //是否为有符号乘法
 wire ID_SpecialRegWri; //是否写特殊寄存器
 wire ID_SpecialRegRead; //是否读特殊寄存器
-wire [31:0] ID_ReadSpecialReg; //特殊寄存器的�???
-wire [1:0] ID_SpecialRegSel; //选择HI或�?�LO寄存�???????? 01选择lo 10选择hi
+wire [31:0] ID_ReadSpecialReg; //特殊寄存器的�????
+wire [1:0] ID_SpecialRegSel; //选择HI或�?�LO寄存�????????? 01选择lo 10选择hi
 wire [2:0] ID_MemDataWidth; //内存数据宽度
 wire [1:0] ID_MemDataCombine; //拼合内存数据
 wire [4:0] ID_CP0Sel;
@@ -74,6 +225,7 @@ wire ID_InsExcepAdEL;
 wire ID_ExcepRI;
 wire ID_DelaySlot;
 wire ID_ERET;
+wire ID_StallAnother;
 
 //EX Parameter
 wire EX_allowin, EX_to_ME_valid;
@@ -92,8 +244,8 @@ wire [1:0] EX_SpecialRegSel;
 wire [31:0] EX_ReadSpecialReg;
 wire [31:0] EX_WriteData;
 wire [31:0] EX_aluResult;
-wire [31:0] EX_LOVal; //保存LO寄存器的�????????
-wire [31:0] EX_HIVal; //保存HI寄存器的�????????
+wire [31:0] EX_LOVal; //保存LO寄存器的�?????????
+wire [31:0] EX_HIVal; //保存HI寄存器的�?????????
 wire [2:0] EX_MemDataWidth;
 wire [1:0] EX_MemDataCombine;
 wire [31:0] EX_rdata2;
@@ -109,6 +261,8 @@ wire EX_ExcepRI;
 wire EX_DelaySlot;
 wire EX_Excep; //EX阶段是否出现例外
 wire EX_ERET;
+wire EX_Stall;
+reg EX_ExcepAll;
 
 //ME Parameter
 wire ME_ready_go, ME_allowin, ME_to_WB_valid;
@@ -132,7 +286,7 @@ reg [1:0] ME_SpecialRegSel;
 reg [31:0] ME_ReadHiReg;
 reg [31:0] ME_ReadLoReg;
 reg ME_SpecialRegWri;
-reg ME_SpecialRegRead
+reg ME_SpecialRegRead;
 reg ME_Mul;
 reg [2:0] ME_MemDataWidth;
 reg [1:0] ME_MemDataCombine;
@@ -151,11 +305,13 @@ reg ME_DataExcepAdEL;
 reg ME_ExcepRI;
 reg ME_DelaySlot;
 reg ME_ERET;
+wire ME_Stall;
+reg ME_StallEnable;
 
 //WB parameter
 wire WB_ready_go, WB_allowin;
-wire WB_CP0SpecWri; //产生例外时对CP0进行�???
-wire WB_ExcepEN; //出现例外则无效五级流�???
+wire WB_CP0SpecWri; //产生例外时对CP0进行�????
+wire WB_ExcepEN; //出现例外则无效五级流�????
 wire [31:0] WB_FinalData;
 wire [31:0] WB_TrueReadData;
 wire [31:0] WB_TrueTrueReadData;
@@ -187,25 +343,60 @@ reg WB_DataExcepAdEL;
 reg WB_ExcepRI;
 reg WB_DelaySlot;
 reg WB_ERET;
+wire WB_Stall;
+reg WB_NewExcepInt;
+reg WB_NewNewExcepInt;
 
 wire [2:0] ForwardA; //srcA 前�??
 wire [2:0] ForwardB; //srcB
-wire [2:0] ForwardCP0; //CP0寄存器的前递
+wire [2:0] ForwardCP0; //CP0寄存器的前�??
 
 //IF
 reg [31:0] PC;
 wire [31:0] next_PC;
 wire [31:0] ins_reg;
+//reg [31:0] inst_addr_input;
+wire IF_Stall; //IF阶段阻塞信号
+reg IF_StallEnable;
+reg IF_instEnable;
+reg [31:0] SpecialPC;
+//reg SpecialEnable;
+//reg SpeciallastEnable;
+
+assign inst_wr = 1'b0;
+assign inst_req = resetn && (ID_allowin || ID_StallAnother);
+assign inst_size = 2'b10;
+assign inst_addr = next_PC;
+//assign inst_addr = next_PC;
+assign inst_wdata = 32'b0;
+
+
+always @(posedge clk) begin
+    if (~resetn) begin
+        IF_instEnable <= 1'b0;
+        IF_StallEnable <= 1'b0;
+    end
+    else begin
+        if (inst_addr_ok) begin
+            IF_instEnable <= 1'b1;
+            IF_StallEnable <= 1'b0;
+        end
+        else if (inst_data_ok && IF_instEnable) begin
+            IF_StallEnable <= 1'b1;
+            IF_instEnable <= 1'b0;
+        end
+    end
+end
+
+assign next_PC = (WB_ExcepEN) ? 32'hbfc00380 : (ID_PCSrc ? ID_PCBranch : (PC + 32'd4));
+
+assign IF_Stall = ~(IF_StallEnable && inst_addr_ok);
 
 assign valid_in = resetn;
 assign IF_allowin = !IF_valid || IF_ready_go && ID_allowin;
-assign IF_ready_go = valid_in;
+assign IF_ready_go = ~IF_Stall;
 assign IF_to_ID_valid = IF_valid && IF_ready_go;
-assign inst_sram_wen = 4'b0;
-assign inst_sram_en = IF_allowin;
-assign next_PC = (WB_ExcepEN) ? 32'hbfc00380 : (ID_PCSrc ? ID_PCBranch : (PC + 32'd4));
-assign inst_sram_addr = next_PC;
-assign ins_reg = inst_sram_rdata;
+assign ins_reg = inst_rdata;
 assign InsExcepAdEL = ~(next_PC[1:0] == 2'b0);
 
 always @(posedge clk) begin
@@ -215,6 +406,9 @@ always @(posedge clk) begin
     end
     else if (IF_allowin) begin
         IF_valid <= valid_in;
+    end
+    
+    if (valid_in && IF_allowin) begin
         PC <= next_PC;
         IF_InsExcepAdEL <= InsExcepAdEL;
     end
@@ -233,7 +427,7 @@ IDStage IDInterface(
     .IF_InsExcepAdEL(IF_InsExcepAdEL),
     .IF_DelaySlot(IF_DelaySlot),
 
-    .ID_Stall(ID_Stall),
+    .ID_Stall(ID_Stall || ID_StallAnother),
     .EX_allowin(EX_allowin),
     .IF_to_ID_valid(IF_to_ID_valid),
 
@@ -251,6 +445,7 @@ IDStage IDInterface(
     .WB_ExcepInt(WB_ExcepInt),
     .WB_DelaySlot(WB_DelaySlot),
     .ME_InsExcepAdEL(ME_InsExcepAdEL),
+    .EX_InsExcepAdEL(EX_InsExcepAdEL),
 
     .ForwardA(ForwardA),
     .ForwardB(ForwardB),
@@ -379,6 +574,7 @@ EXStage EXInterface (
     .EX_allowin(EX_allowin),
     .EX_to_ME_valid(EX_to_ME_valid),
     .EX_valid(EX_valid),
+    .EX_Stall(EX_Stall),
 
     .EX_NextPC(EX_NextPC),
     .EX_PC(EX_PC),
@@ -416,21 +612,55 @@ EXStage EXInterface (
     .EX_ExcepRI(EX_ExcepRI),
     .EX_Excep(EX_Excep),
 
-    .data_sram_wen(data_sram_wen),
-    .data_sram_addr(data_sram_addr),
-    .data_sram_wdata(data_sram_wdata),
+    //.data_sram_wen(data_sram_wen),
+    //.data_sram_addr(data_sram_addr),
+    //.data_sram_wdata(data_sram_wdata),
+    .data_wr(data_wr),
+    .data_size(data_size),
+    .data_addr(data_addr),
+    .data_wdata(data_wdata),
+    .data_addr_ok(data_addr_ok),
+    .data_data_ok(data_data_ok),
     
     .ME_MulRes(ME_MulRes)
 );
 
 //ME
-assign ME_ready_go = 1'b1;
+assign ME_ready_go = ~ME_Stall || WB_ExcepEN;
 assign ME_allowin = !ME_valid || ME_ready_go && WB_allowin;
 assign ME_to_WB_valid = ME_valid && ME_ready_go;
 
-//存在例外取消内存�???
-assign data_sram_en = (EX_MemToReg || EX_MemWrite) && EX_valid && ~(EX_Excep || ME_Excep || WB_ExcepEN || (EX_DelaySlot && ID_InsExcepAdEL)) ; //同步RAM 上一拍输入， 下一拍得到结�????????
-assign ME_readData = data_sram_rdata;
+//存在例外取消内存�????
+assign data_req = (EX_MemToReg || EX_MemWrite) && EX_valid && ~(EX_Excep || EX_ExcepAll || (EX_DelaySlot && (ID_InsExcepAdEL || InsExcepAdEL))) ; //同步RAM 上一拍输入， 下一拍得到结�?????????
+assign ME_readData = data_rdata;
+
+always @(posedge EX_valid) begin
+    if (~resetn) begin
+        EX_ExcepAll <= 1'b0;
+    end
+    else begin
+        EX_ExcepAll <= ME_Excep;
+    end
+end
+
+//数据读写请求生效时，未接收到addr_ok则阻塞在EX阶段，未接收到data_ok则阻塞在ME阶段
+assign EX_Stall = data_req && ~data_addr_ok;
+
+always @(posedge clk) begin
+    if (~resetn) begin
+        ME_StallEnable <= 1'b0;
+    end
+    else begin
+        if (data_addr_ok) begin
+            ME_StallEnable <= 1'b1;
+        end
+        else if (data_data_ok) begin
+            ME_StallEnable <= 1'b0;
+        end
+    end
+end
+
+assign ME_Stall = ME_StallEnable && ~data_data_ok;
 
 always @(posedge clk) begin
     if (~resetn) begin
@@ -483,12 +713,14 @@ assign ME_LOVal = ME_Mul ? ME_MulRes[31:0] : ME_OldLOVal;
 assign ME_HIVal = ME_Mul ? ME_MulRes[63:32] : ME_OldHIVal;
 
 //WB
-assign WB_ready_go = 1'b1;
-assign WB_allowin = 1'b1;
+assign WB_ready_go = ~WB_Stall;
+assign WB_allowin = ~WB_Stall;
 
 always @(posedge clk) begin
     if (~resetn) begin
         WB_valid <= 1'b0;
+        WB_NewNewExcepInt <= 1'b0;
+        WB_NewExcepInt <= 1'b0;
     end
     else if (WB_allowin) begin
         WB_valid <= ME_to_WB_valid && ~WB_ExcepEN;
@@ -521,6 +753,8 @@ always @(posedge clk) begin
         WB_ExcepRI <= ME_ExcepRI;
         WB_DelaySlot <= ME_DelaySlot;
         WB_ERET <= ME_ERET;
+        WB_NewExcepInt <= 1'b0;
+        WB_NewNewExcepInt <= WB_NewExcepInt;
     end
 end
 
@@ -585,11 +819,11 @@ always @(posedge clk) begin
     end
 end
 
-//触发计时器中�??
+//触发计时器中�???
 always @(posedge clk) begin
     if (CP0[9] == CP0[11]) begin
         CP0[13][30] <= 1'b1;
-        CP0[13][15] <= 1'b1; //绑定在硬件中�??5号上
+        CP0[13][15] <= 1'b1; //绑定在硬件中�???5号上
     end
     else begin
         CP0[13][30] <= 1'b0;
@@ -601,8 +835,12 @@ end
 assign WB_ExcepInt = (~CP0[12][1] && CP0[12][0] && (CP0[12][15:8] & CP0[13][15:8]));
 
 //产生例外的指令会取消当前指令的所有数据写使能
-assign WB_CP0SpecWri = WB_ExcepSYS || WB_ExcepBP || WB_ExcepOv || WB_ExcepAdES || WB_InsExcepAdEL || WB_DataExcepAdEL || WB_ExcepRI || WB_ExcepInt; //判断是否产生例外
+assign WB_CP0SpecWri = WB_ExcepSYS || WB_ExcepBP || WB_ExcepOv || WB_ExcepAdES || WB_InsExcepAdEL || WB_DataExcepAdEL || WB_ExcepRI || WB_NewNewExcepInt; //判断是否产生例外
 assign WB_ExcepEN = WB_CP0SpecWri && WB_valid;
+
+always @(posedge WB_ExcepInt) begin
+    WB_NewExcepInt <= 1'b1;
+end
 
 //CP0寄存器写
 always @(posedge clk) begin
@@ -612,14 +850,14 @@ always @(posedge clk) begin
     end
     else if (WB_CP0SpecWri && WB_valid) begin //例外响应
         
-        if (~CP0[12][1]) begin //EXL�??1时，EPC在发生新的例外时不做更新
+        if (~CP0[12][1]) begin //EXL�???1时，EPC在发生新的例外时不做更新
             CP0[14] <= WB_DelaySlot ? (WB_PC - 32'd4) : WB_PC; //
             CP0[13][31] <= WB_DelaySlot;
         end
 
         CP0[12][1] <= 1'b1;
 
-        if (WB_ExcepInt) begin //控制例外的优先级
+        if (WB_NewNewExcepInt) begin //控制例外的优先级
             CP0[13][6:2] <= 5'h00;
         end
         else if (WB_InsExcepAdEL) begin 
@@ -648,7 +886,7 @@ always @(posedge clk) begin
         end
 
     end
-    else if (WB_CP0Wri && WB_valid) begin //由指令控制的CP0�??? 
+    else if (WB_CP0Wri && WB_valid) begin //由指令控制的CP0�???? 
 
         if (WB_CP0Sel == 5'd9) begin //控制读写权限
             CP0[9] <= WB_rdata2;
@@ -677,17 +915,20 @@ always @(posedge clk) begin
 end
 
 assign debug_wb_pc = WB_PC;
-assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid && (~WB_ExcepEN) && ~(WB_DelaySlot && ME_InsExcepAdEL)}}; //跳转出现无效指令，分支延迟槽内的指令无效
+assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid && (~WB_ExcepEN) && ~(WB_DelaySlot && (ME_InsExcepAdEL || EX_InsExcepAdEL || IF_InsExcepAdEL))}}; //跳转出现无效指令，分支延迟槽内的指令无效
 assign debug_wb_rf_wnum = WB_WriteReg;
 assign debug_wb_rf_wdata = WB_FinalData;
 
-//冲突�????????测单�????????
+//冲突�?????????测单�?????????
 //wire [2:0] ForwardA;
 //wire [2:0] ForwardB;
 
 assign ID_Stall = (ForwardA[0] || ForwardB[0]) || ((ForwardA[1] || ForwardB[1]) && ME_MemToReg) || 
                   (ID_valid && ID_SpecialRegRead && EX_SpecialRegWri && EX_valid && ((ID_SpecialRegSel[0] && EX_SpecialRegSel[0]) || (ID_SpecialRegSel[1] && EX_SpecialRegSel[1]))) ||
                   (ID_valid && ID_SpecialRegRead && ME_SpecialRegWri && ME_valid && ((ID_SpecialRegSel[0] && ME_SpecialRegSel[0]) || (ID_SpecialRegSel[1] && ME_SpecialRegSel[1])));
+
+assign ID_StallAnother = ID_PCSrc && ~(IF_StallEnable && inst_addr_ok);
+assign WB_Stall = WB_ExcepEN && ~(IF_StallEnable && inst_addr_ok);
 
 assign ForwardA[0] = (ID_rs == EX_WriteReg) && EX_valid && EX_RegWrite;
 assign ForwardA[1] = (ID_rs == ME_WriteReg) && ME_valid && ME_RegWrite;

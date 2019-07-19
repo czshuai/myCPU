@@ -93,6 +93,8 @@ assign wlast = 1'b1;
 //reg [31:0] tmp_inst_addr;
 
 reg [5:0] state;
+reg InstEnable;
+reg DataEnable;
 
 localparam S0 = 6'b000001;
 localparam S1 = 6'b000010;
@@ -116,10 +118,12 @@ always @(posedge clk) begin
         case (state)
             S0: begin
                     if (data_req == 1'b1 && data_addr_ok == 1'b0) begin
+                        DataEnable <= 1'b1;
                         data_addr_ok <= 1'b1;
                         state <= S1;
                     end
                     else if (inst_req == 1'b1 && inst_addr_ok == 1'b0) begin
+                        InstEnable <= 1'b1;
                         inst_addr_ok <= 1'b1;
                         state <= S1;
                     end
@@ -127,7 +131,7 @@ always @(posedge clk) begin
             S1: begin
                     if (data_wr == 1'b0 && data_addr_ok == 1'b1) begin
                         araddr <= data_addr;
-                        arsize <= data_size;
+                        arsize <= {1'b0, data_size};
                         arvalid <= 1'b1;
                         data_data_ok <= 1'b0;
                         data_addr_ok <= 1'b0;
@@ -135,7 +139,7 @@ always @(posedge clk) begin
                     end
                     else if (data_wr == 1'b1 && data_addr_ok == 1'b1) begin
                         awaddr <= data_addr;
-                        awsize <= data_size;
+                        awsize <= {1'b0, data_size};
                         wdata <= data_wdata;
                         awvalid <= 1'b1;
                         data_data_ok <= 1'b0;
@@ -144,14 +148,16 @@ always @(posedge clk) begin
                                  {4{(data_size == 2'b0 && data_addr[1:0] == 2'b1)}} & 4'b10 | 
                                  {4{(data_size == 2'b0 && data_addr[1:0] == 2'b10)}} & 4'b100 |
                                  {4{(data_size == 2'b0 && data_addr[1:0] == 2'b11)}} & 4'b1000 |
-                                 {4{(data_size == 2'b1 && data_addr[1:0] == 2'b0)}} & 4'b11 |
+                                 {4{(data_size == 2'b1 && (data_addr[1:0] == 2'b0 || data_addr[1:0] == 2'b1))}} & 4'b11 |
                                  {4{(data_size == 2'b1 && data_addr[1:0] == 2'b10)}} & 4'b1100 |
-                                 {4{(data_size == 2'b10 && data_addr[1:0] == 2'b0)}} & 4'b1111;
+                                 {4{(data_size == 2'b10 && (data_addr[1:0] == 2'b0 || data_addr[1:0] == 2'b11))}} & 4'b1111 |
+                                 {4{(data_size == 2'b11 && data_addr[1:0] == 2'b10)}} & 4'b0111 |
+                                 {4{(data_size == 2'b11 && data_addr[1:0] == 2'b1)}} & 4'b1110;
                         state <= S2;
                     end
                     else if (inst_wr == 1'b0 && inst_addr_ok == 1'b1) begin
                         araddr <= inst_addr;
-                        arsize <= inst_size;
+                        arsize <= {1'b0, inst_size};
                         arvalid <= 1'b1;
                         inst_data_ok <= 1'b0;
                         inst_addr_ok <= 1'b0;
@@ -172,12 +178,18 @@ always @(posedge clk) begin
                     end
                 end
             S3: begin
-                    if (rready == 1'b1 && rvalid == 1'b1) begin
+                    if (rready == 1'b1 && rvalid == 1'b1 && InstEnable) begin
                         inst_rdata <= rdata;
-                        data_rdata <= rdata;
                         rready <= 1'b0;
                         inst_data_ok <= 1'b1;
+                        InstEnable <= 1'b0;
+                        state <= S0;
+                    end
+                    else if (rready == 1'b1 && rvalid == 1'b1 && DataEnable) begin
+                        data_rdata <= rdata;
+                        rready <= 1'b0;
                         data_data_ok <= 1'b1;
+                        DataEnable <= 1'b0;
                         state <= S0;
                     end
                     else if (wvalid == 1'b1 && wready == 1'b1) begin

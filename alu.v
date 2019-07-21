@@ -12,9 +12,9 @@ wire op_add; //加法操作
 wire op_sub; //减法操作
 wire op_slt; //有符号比较，小于置位
 wire op_sltu; //无符号比较，小于置位
-wire op_and; //按位�?
+wire op_and; //按位与
 wire op_nor; //按位或非
-wire op_or; //按位�?
+wire op_or; //按位或
 wire op_xor; //按位异或
 wire op_sll; //逻辑左移
 wire op_srl; //逻辑右移
@@ -70,7 +70,7 @@ assign nor_result = ~or_result;
 assign xor_result = alu_src1 ^ alu_src2; 
 assign lui_result = {alu_src2[15:0], 16'b0};
 
-//无符号和有符号的计算过程相同，有符号会产生例�?
+//无符号和有符号的计算过程相同，有符号会产生例外
 wire [31:0] adder_a; 
 wire [31:0] adder_b; 
 wire adder_cin; 

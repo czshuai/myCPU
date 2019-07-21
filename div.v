@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-//x/y   //执行�?�?34个周�?
+//x/y   //执行需要34个周期
 module div(
     input div_clk, resetn,
     input div,
@@ -17,17 +17,17 @@ wire [32:0] tmp_d;
 wire [32:0] result_r;
 wire [32:0] UnsignX, UnsignY;
 
-assign UnsignX = {1'b0, (div_signed ? (x[31] ? (~x + 1) : x) : x)}; //取绝对�?�并扩展�??33�??
+assign UnsignX = {1'b0, (div_signed ? (x[31] ? (~x + 1) : x) : x)}; //取绝对值并扩展至33位
 assign UnsignY = {1'b0, (div_signed ? (y[31] ? (~y + 1) : y) : y)};
 
-always @(posedge div_clk) begin  //33位除法计�??
+always @(posedge div_clk) begin  //33位除法计算
     if (~resetn || ~div) begin
-        count <= 8'd32;     //计算33�??
+        count <= 8'd32;     //计算33次
         complete <= 1'b0;
         tmp_r <= 33'b0;
     end
     else if (~(count[7])) begin
-        if (tmp_d[32]) begin    //tmp_d为负�??
+        if (tmp_d[32]) begin    //tmp_d为负数
             UnsignS <= {UnsignS[31:0], 1'b0};
             tmp_r <= result_r;
         end 
@@ -48,7 +48,7 @@ assign result_r = {tmp_r[31:0], UnsignX[count]};
 assign tmp_d = result_r - UnsignY;
 
 wire [32:0] TmpS, TmpR;
-assign TmpS = (div_signed ? ((x[31] == y[31]) ? UnsignS : ~(UnsignS - 1)) : UnsignS); //去绝对�?�并截位
+assign TmpS = (div_signed ? ((x[31] == y[31]) ? UnsignS : ~(UnsignS - 1)) : UnsignS); //去绝对值并截位
 assign TmpR = (div_signed ? (x[31] ? ~(UnsignR - 1) : UnsignR) : UnsignR);
 
 assign s = TmpS[31:0];

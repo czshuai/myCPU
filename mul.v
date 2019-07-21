@@ -122,7 +122,7 @@ endmodule
 module mul(
     input mul_clk, resetn,
     input mul_signed,
-    input [31:0] x, y, //x扩展�???64�??? y扩展�???33�??? 区别有无符号
+    input [31:0] x, y, //x扩展至64位 y扩展至33位 区别有无符号
     output [63:0] result
     );
 
@@ -133,8 +133,8 @@ assign CalX = mul_signed ? {{32{x[31]}}, x} : {32'b0, x};
 assign CalY = mul_signed ? {y[31], y} : {1'b0, y};
 
 //booth
-wire [16:0] Carry; //booth计算得到的进�???
-wire [63:0] BoothRes [16:0]; //booth的计算结�???
+wire [16:0] Carry; //booth计算得到的进位
+wire [63:0] BoothRes [16:0]; //booth的计算结果
 BoothInterBase fir(.y({CalY[1], CalY[0], 1'b0}), .InX(CalX), .OutX(BoothRes[0]), .Carry(Carry[0]));
 
 generate

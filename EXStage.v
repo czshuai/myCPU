@@ -185,17 +185,17 @@ assign EX_HIVal = (EX_SpecialRegWri && ~EX_Div && EX_SpecialRegSel[1]) ? EX_rdat
 assign EX_srcA = EX_ALUSrc1 ? EX_rdata1 : EX_UnSignExt_imm106;
 assign EX_srcB = EX_ALUSrc2 ? EX_rdata2 : EX_Ext_imm150;
 assign EX_WriteData = EX_rdata2;
-assign EX_WriteReg = EX_WriReg31 ? 5'd31 : (EX_RegDst ? EX_rd : EX_rt); //jal�???????要写31号寄存器
-assign EX_RegWrite = (EX_WriteReg == 5'b0) ? 1'b0 : EX_OldRegWrite; //写寄存器0�??????? 直接取消寄存器写使能 避免后续产生寄存器前�???????
+assign EX_WriteReg = EX_WriReg31 ? 5'd31 : (EX_RegDst ? EX_rd : EX_rt); //jal需要写31号寄存器
+assign EX_RegWrite = (EX_WriteReg == 5'b0) ? 1'b0 : EX_OldRegWrite; //写寄存器0时 直接取消寄存器写使能 避免后续产生寄存器前�???????
 
-//出现例外直接取消写信�???????
+//出现例外直接取消写信号
 alu calculation(.ALUControl(EX_ALUControl), .alu_src1(EX_srcA), .alu_src2(EX_srcB), .alu_result(EX_aluResult), .ExcepOv(ExcepOv));
 div divider(.div_clk(clk), .resetn(resetn), .div(EX_Div), .div_signed(EX_DivSigned), .x(EX_rdata1), .y(EX_rdata2), .s(EX_DivResS), .r(EX_DivResR), .complete(EX_DivComplete));
 mul muler(.mul_clk(clk), .resetn(resetn), .mul_signed(EX_MulSigned), .x(EX_rdata1), .y(EX_rdata2), .result(ME_MulRes));
 
 //div产生阻塞信号
 assign EX_NewStall = (EX_Div && ~EX_DivComplete) || EX_Stall;
-//mult流水 跨执行阶段和访存阶段 模块内进行流�??????? 在访存阶段得到结�???????
+//mult流水 跨执行阶段和访存阶段 模块内进行流水 在访存阶段得到结果
 
 /*
 assign data_wen_sel = ({4{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b0)}} & {3'b0, EX_MemWrite}) |
@@ -218,7 +218,7 @@ assign data_wen_sel = ({4{(EX_MemDataWidth == 3'b001 && EX_aluResult[1:0] == 2'b
 wire [7:0] regData [3:0];
 wire [31:0] SWLRes;
 wire [31:0] SWRRes;
-wire BadAddr; //表示地址不对�??
+wire BadAddr; //表示地址不对齐
 
 assign regData[0] = EX_rdata2[7:0];
 assign regData[1] = EX_rdata2[15:8];

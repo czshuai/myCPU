@@ -106,6 +106,7 @@ wire [31:0] data_rdata;
 assign clk = aclk;
 assign resetn = aresetn; //换个名字
 
+//类sram转axi模块
 cpu_axi_interface axiInterface (
     .clk(clk),
     .resetn(resetn),
@@ -178,8 +179,8 @@ wire InsExcepAdEL;
 wire valid_in;
 wire IF_ready_go, IF_allowin, IF_to_ID_valid;
 reg IF_valid;
-reg IF_InsExcepAdEL; //记录取�?�是否产生例�????
-wire IF_DelaySlot; //判断当前指令是否在延迟槽�???
+reg IF_InsExcepAdEL; //记录取指是否产生例外
+wire IF_DelaySlot; //判断当前指令是否在延迟槽
 
 //ID parameter
 wire ID_allowin, ID_to_EX_valid;
@@ -213,8 +214,8 @@ wire ID_Mul; //乘法使能信号
 wire ID_MulSigned; //是否为有符号乘法
 wire ID_SpecialRegWri; //是否写特殊寄存器
 wire ID_SpecialRegRead; //是否读特殊寄存器
-wire [31:0] ID_ReadSpecialReg; //特殊寄存器的�????
-wire [1:0] ID_SpecialRegSel; //选择HI或�?�LO寄存�????????? 01选择lo 10选择hi
+wire [31:0] ID_ReadSpecialReg; //特殊寄存器的值
+wire [1:0] ID_SpecialRegSel; //选择HI或者LO寄存器值 01选择lo 10选择hi
 wire [2:0] ID_MemDataWidth; //内存数据宽度
 wire [1:0] ID_MemDataCombine; //拼合内存数据
 wire [4:0] ID_CP0Sel;
@@ -244,8 +245,8 @@ wire [1:0] EX_SpecialRegSel;
 wire [31:0] EX_ReadSpecialReg;
 wire [31:0] EX_WriteData;
 wire [31:0] EX_aluResult;
-wire [31:0] EX_LOVal; //保存LO寄存器的�?????????
-wire [31:0] EX_HIVal; //保存HI寄存器的�?????????
+wire [31:0] EX_LOVal; //保存LO寄存器的值
+wire [31:0] EX_HIVal; //保存HI寄存器的值
 wire [2:0] EX_MemDataWidth;
 wire [1:0] EX_MemDataCombine;
 wire [31:0] EX_rdata2;
@@ -271,7 +272,7 @@ wire [31:0] ME_readData;
 wire [31:0] ME_LOVal;
 wire [31:0] ME_HIVal;
 wire [63:0] ME_MulRes; //mul计算结果
-wire [31:0] ME_FinalData; //寄存器写入�??
+wire [31:0] ME_FinalData; //寄存器写入值
 wire ME_Excep;
 reg [31:0] ME_NextPC;
 reg [31:0] ME_PC;
@@ -310,8 +311,8 @@ reg ME_StallEnable;
 
 //WB parameter
 wire WB_ready_go, WB_allowin;
-wire WB_CP0SpecWri; //产生例外时对CP0进行�????
-wire WB_ExcepEN; //出现例外则无效五级流�????
+wire WB_CP0SpecWri; //产生例外时对CP0进行写
+wire WB_ExcepEN; //出现例外则无效五级流水
 wire [31:0] WB_FinalData;
 wire [31:0] WB_TrueReadData;
 wire [31:0] WB_TrueTrueReadData;
@@ -347,9 +348,9 @@ wire WB_Stall;
 reg WB_NewExcepInt;
 reg WB_NewNewExcepInt;
 
-wire [2:0] ForwardA; //srcA 前�??
+wire [2:0] ForwardA; //srcA 前递
 wire [2:0] ForwardB; //srcB
-wire [2:0] ForwardCP0; //CP0寄存器的前�??
+wire [2:0] ForwardCP0; //CP0寄存器的前递
 
 //IF
 reg [31:0] PC;
@@ -370,7 +371,7 @@ assign inst_addr = next_PC;
 //assign inst_addr = next_PC;
 assign inst_wdata = 32'b0;
 
-
+//此处描述的逻辑：在inst_addr_ok变为1后，inst_data_ok变1才能被识别
 always @(posedge clk) begin
     if (~resetn) begin
         IF_instEnable <= 1'b0;
@@ -390,6 +391,7 @@ end
 
 assign next_PC = (WB_ExcepEN) ? 32'hbfc00380 : (ID_PCSrc ? ID_PCBranch : (PC + 32'd4));
 
+//在当前数据接收完成后，且下一个地址接收后，停止阻塞
 assign IF_Stall = ~(IF_StallEnable && inst_addr_ok);
 
 assign valid_in = resetn;
@@ -630,8 +632,8 @@ assign ME_ready_go = ~ME_Stall || WB_ExcepEN;
 assign ME_allowin = !ME_valid || ME_ready_go && WB_allowin;
 assign ME_to_WB_valid = ME_valid && ME_ready_go;
 
-//存在例外取消内存�????
-assign data_req = (EX_MemToReg || EX_MemWrite) && EX_valid && ~(EX_Excep || EX_ExcepAll || (EX_DelaySlot && (ID_InsExcepAdEL || InsExcepAdEL))) ; //同步RAM 上一拍输入， 下一拍得到结�?????????
+//存在例外取消内存请求
+assign data_req = (EX_MemToReg || EX_MemWrite) && EX_valid && ~(EX_Excep || EX_ExcepAll || (EX_DelaySlot && (ID_InsExcepAdEL || InsExcepAdEL))) ; //同步RAM 上一拍输入， 下一拍得到结�?????????
 assign ME_readData = data_rdata;
 
 always @(posedge EX_valid) begin
@@ -819,11 +821,11 @@ always @(posedge clk) begin
     end
 end
 
-//触发计时器中�???
+//触发计时器中断
 always @(posedge clk) begin
     if (CP0[9] == CP0[11]) begin
         CP0[13][30] <= 1'b1;
-        CP0[13][15] <= 1'b1; //绑定在硬件中�???5号上
+        CP0[13][15] <= 1'b1; //绑定在硬件中断5号上
     end
     else begin
         CP0[13][30] <= 1'b0;
@@ -850,7 +852,7 @@ always @(posedge clk) begin
     end
     else if (WB_CP0SpecWri && WB_valid) begin //例外响应
         
-        if (~CP0[12][1]) begin //EXL�???1时，EPC在发生新的例外时不做更新
+        if (~CP0[12][1]) begin //EXL�???1时，EPC在发生新的例外时不做更新
             CP0[14] <= WB_DelaySlot ? (WB_PC - 32'd4) : WB_PC; //
             CP0[13][31] <= WB_DelaySlot;
         end
@@ -886,7 +888,7 @@ always @(posedge clk) begin
         end
 
     end
-    else if (WB_CP0Wri && WB_valid) begin //由指令控制的CP0�???? 
+    else if (WB_CP0Wri && WB_valid) begin //由指令控制的CP0写
 
         if (WB_CP0Sel == 5'd9) begin //控制读写权限
             CP0[9] <= WB_rdata2;
@@ -919,7 +921,7 @@ assign debug_wb_rf_wen = {4{WB_RegWrite && WB_valid && (~WB_ExcepEN) && ~(WB_Del
 assign debug_wb_rf_wnum = WB_WriteReg;
 assign debug_wb_rf_wdata = WB_FinalData;
 
-//冲突�?????????测单�?????????
+//冲突检测单元
 //wire [2:0] ForwardA;
 //wire [2:0] ForwardB;
 
